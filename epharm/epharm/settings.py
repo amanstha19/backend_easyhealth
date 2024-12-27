@@ -41,6 +41,7 @@ INSTALLED_APPS = [
     'myapp',
     'rest_framework',
     'corsheaders',
+
 ]
 
 
@@ -64,6 +65,12 @@ CORS_ALLOWED_ORIGINS = [
 
 
 ]
+
+CSRF_TRUSTED_ORIGINS = [
+    'http://localhost:5173',
+    'http://127.0.0.1:8000',# Add the Vite server URL
+]
+
 
 ROOT_URLCONF = 'epharm.urls'
 
@@ -138,3 +145,9 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'core.CustomUser'
+CORS_ALLOW_ALL_ORIGINS = True
+
+CSRF_COOKIE_NAME = "csrftoken"
+CSRF_COOKIE_HTTPONLY = False
+
+CSRF_COOKIE_SECURE = True
