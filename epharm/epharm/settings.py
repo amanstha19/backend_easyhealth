@@ -12,6 +12,8 @@ https://docs.djangoproject.com/en/5.0/ref/settings/
 
 from pathlib import Path
 
+from django.conf.global_settings import MEDIA_URL
+
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -31,6 +33,7 @@ ALLOWED_HOSTS = []
 # Application definition
 
 INSTALLED_APPS = [
+    'jazzmin',
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -41,6 +44,7 @@ INSTALLED_APPS = [
     'myapp',
     'rest_framework',
     'corsheaders',
+
 
 ]
 
@@ -150,4 +154,19 @@ CORS_ALLOW_ALL_ORIGINS = True
 CSRF_COOKIE_NAME = "csrftoken"
 CSRF_COOKIE_HTTPONLY = False
 
-CSRF_COOKIE_SECURE = True
+STATIC_URL = 'static/'
+
+MEDIA_URL='/images/'
+
+STATICFILES_DIRS =[
+    BASE_DIR / 'static'
+]
+
+MEDIA_ROOT= 'static/images'
+
+# Default primary key field type
+# https://docs.djangoproject.com/en/5.0/ref/settings/#default-auto-field
+
+DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
+
+CORS_ALLOW_ALL_ORIGIN = True
