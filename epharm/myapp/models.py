@@ -3,6 +3,7 @@ from django.utils.text import slugify
 
 class Product(models.Model):
     objects = None
+    id = models.AutoField(primary_key=True)
     CATEGORIES = (
         ('OTC', 'Over-the-Counter'),
         ('RX', 'Prescription Medicines'),
