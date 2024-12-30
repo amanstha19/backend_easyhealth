@@ -22,8 +22,8 @@ class Product(models.Model):
 
     category = models.CharField(max_length=50, choices=CATEGORIES)
     description = models.TextField(blank=True, null=True)
-    price = models.CharField(max_length=255)
-    stock = models.PositiveIntegerField()
+    price = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    stock = models.IntegerField(default=0)
     prescription_required = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
