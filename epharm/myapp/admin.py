@@ -7,3 +7,21 @@ class ProductAdmin(admin.ModelAdmin):
     list_filter = ['category']  # Optional: adds a filter sidebar by category
 
 admin.site.register(Product, ProductAdmin)
+
+
+
+
+from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin
+from .models import CustomUser
+
+class CustomUserAdmin(UserAdmin):
+    model = CustomUser
+    fieldsets = UserAdmin.fieldsets + (
+        (None, {'fields': ('city', 'country', 'phone')}),
+    )
+    add_fieldsets = UserAdmin.add_fieldsets + (
+        (None, {'fields': ('city', 'country', 'phone')}),
+    )
+
+admin.site.register(CustomUser, CustomUserAdmin)

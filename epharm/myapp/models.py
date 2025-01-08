@@ -1,5 +1,7 @@
 from django.db import models
-from django.utils.text import slugify
+
+from django.db import models
+from django.contrib.auth.models import AbstractUser, Group, Permission
 
 class Product(models.Model):
     objects = None
@@ -31,4 +33,19 @@ class Product(models.Model):
 
     def __str__(self):
         # Return the generic name if available, otherwise return the name or a fallback string
-        return self.generic_name if self.generic_name else self.name if self.name else "Unnamed Product"
+        return self.generic_name if self.generic_name else self.name if self.name else "Unnamed Product"\
+
+
+
+
+class CustomUser(AbstractUser):
+    city = models.CharField(max_length=50, blank=True, null=True)
+    country = models.CharField(max_length=50, blank=True, null=True)
+    phone = models.CharField(max_length=50, blank=True, null=True)
+
+    class Meta:
+        verbose_name = 'Custom User'
+        verbose_name_plural = 'Custom Users'
+
+    def __str__(self):
+        return self.username
