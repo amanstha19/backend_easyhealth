@@ -1,6 +1,7 @@
 from django.urls import path
 from . import views
 from .views import CustomLoginAPIView
+from .views import UserProfileView
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
     TokenRefreshView,
@@ -26,5 +27,9 @@ urlpatterns = [
     # Registration Route (Signup)
     path('register/', views.RegisterAPIView.as_view(), name='register'),  # Register a new user
     path('api/token/', CustomLoginAPIView.as_view(), name='login'),
+
+    path('check-email/', views.check_email, name='check_email'),  # Check if an email is already registered
+
+    path('profile/', UserProfileView.as_view(), name='user-profile'),  # Profile endpoint
 
 ]

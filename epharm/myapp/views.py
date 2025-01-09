@@ -1,4 +1,4 @@
-from rest_framework.decorators import api_view
+
 from rest_framework.response import Response
 from .serializers import ProductSerializer, UserSerializer, RegisterSerializer
 from .models import Product
@@ -9,7 +9,7 @@ from rest_framework import generics, status
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import CustomTokenObtainPairSerializer
 
-
+from rest_framework.decorators import api_view
 # Get all available routes
 @api_view(['GET'])
 def getRoutes(request):
@@ -73,3 +73,63 @@ class CustomLoginAPIView(TokenObtainPairView):
     def post(self, request, *args, **kwargs):
         print("Request Body:", request.data)  # Debugging: Print request data
         return super().post(request, *args, **kwargs)
+
+
+import json
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+
+
+
+@csrf_exempt
+def check_email(request):
+    if request.method == "POST":
+        try:
+            # Parse the JSON body of the request
+            body = json.loads(request.body)
+            email = body.get('email', None)
+
+            if email is None:
+                return JsonResponse({'error': 'Email is required.'}, status=400)
+
+            if CustomUser.objects.filter(email=email).exists():
+                return JsonResponse({'error': 'Email is already in use.'}, status=409)
+
+            return JsonResponse({'message': 'Email is available.'}, status=200)
+
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'Invalid JSON format.'}, status=400)
+
+    return JsonResponse({'error': 'Invalid request method.'}, status=405)
+
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework.permissions import IsAuthenticated
+from rest_framework import status
+from .models import CustomUser
+from .serializers import CustomUserSerializer
+
+class UserProfileView(APIView):
+    permission_classes = [IsAuthenticated]  # Ensure that the user is authenticated
+
+    def get(self, request):
+        """
+        Get the user profile information.
+        """
+        user = request.user  # This gives the current logged-in user
+        serializer = CustomUserSerializer(user)
+        return Response(serializer.data, status=status.HTTP_200_OK)
+
+    def put(self, request):
+        """
+        Update the user profile information.
+        """
+        user = request.user
+        serializer = CustomUserSerializer(user, data=request.data, partial=True)  # Allow partial updates
+        if serializer.is_valid():
+            serializer.save()  # Save the updated data
+            return Response(serializer.data, status=status.HTTP_200_OK)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
