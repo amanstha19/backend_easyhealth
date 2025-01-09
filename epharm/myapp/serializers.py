@@ -3,9 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Product
-
-User = get_user_model()
+from .models import Product, CustomUser  # Assuming CustomUser is your model
 
 # Product Serializer
 class ProductSerializer(serializers.ModelSerializer):
@@ -21,18 +19,18 @@ class RegisterSerializer(serializers.ModelSerializer):
     last_name = serializers.CharField(required=False, allow_blank=True)   # Optional last name
 
     class Meta:
-        model = User
+        model = CustomUser  # Use CustomUser model here
         fields = ['username', 'email', 'password', 'first_name', 'last_name']  # Specify fields
+        extra_kwargs = {'password': {'write_only': True}}
 
     def create(self, validated_data):
         # Create user using the validated data
-        print(validated_data)
-        user = User.objects.create_user(
+        user = CustomUser.objects.create_user(
             username=validated_data['username'],
             email=validated_data['email'],
             password=validated_data['password'],
-            first_name=validated_data.get('first_name', ''),  # Use an empty string if no first name
-            last_name=validated_data.get('last_name', '')     # Use an empty string if no last name
+            first_name=validated_data.get('first_name', ''),  # Use empty string if no first name
+            last_name=validated_data.get('last_name', '')     # Use empty string if no last name
         )
         return user
 
@@ -40,8 +38,8 @@ class RegisterSerializer(serializers.ModelSerializer):
 # User Serializer (for listing user data)
 class UserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = User
-        fields = ['id', 'username', 'email']
+        model = CustomUser  # Ensure this is CustomUser if you're using it
+        fields = ['id', 'username', 'email', 'first_name', 'last_name']
 
 
 # User Serializer with Token (for including JWT token with user data)
@@ -49,11 +47,11 @@ class UserSerializerWithToken(serializers.ModelSerializer):
     token = serializers.SerializerMethodField()
 
     class Meta:
-        model = User
-        fields = ['id', 'username', 'email', 'token']
+        model = CustomUser  # Use CustomUser model
+        fields = ['id', 'username', 'email', 'token', 'first_name', 'last_name']
 
     @staticmethod
-    def get_token(obj: User) -> str:
+    def get_token(obj: CustomUser) -> str:
         # Generate JWT access token for the user
         token = RefreshToken.for_user(obj)
         return str(token.access_token)
@@ -68,10 +66,8 @@ class CustomTokenObtainPairSerializer(TokenObtainPairSerializer):
         return super().validate(attrs)
 
 
-from rest_framework import serializers
-from .models import CustomUser
-
+# Custom User Serializer for detailed profile data
 class CustomUserSerializer(serializers.ModelSerializer):
     class Meta:
-        model = CustomUser
+        model = CustomUser  # Ensure this is your custom user model
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'city', 'country', 'phone']

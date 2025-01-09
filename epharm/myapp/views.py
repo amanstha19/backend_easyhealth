@@ -1,19 +1,26 @@
+# views.py
 
-from rest_framework.response import Response
+from rest_framework.views import APIView
 from .serializers import ProductSerializer, UserSerializer, RegisterSerializer
-from .models import Product
+from .models import Product, CustomUser
 from django.shortcuts import get_object_or_404
 from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenObtainPairView
+from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import generics, status
 from rest_framework_simplejwt.views import TokenObtainPairView
 from .serializers import CustomTokenObtainPairSerializer
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from rest_framework.decorators import api_view, permission_classes
+import json
+from django.views.decorators.csrf import csrf_exempt
+from django.http import JsonResponse
+from rest_framework_simplejwt.views import TokenRefreshView
 
-from rest_framework.decorators import api_view
 # Get all available routes
 @api_view(['GET'])
 def getRoutes(request):
-    return Response({'message': 'Hello from Django!'})  # Simple response for API routes
+    return Response({'message': 'Hello from Django!'})
 
 # Get all products
 @api_view(['GET'])
@@ -35,8 +42,10 @@ def getProduct(request, pk):
 
 # Get user profile (protected route)
 @api_view(['GET'])
+@permission_classes([IsAuthenticated])
 def getUserProfile(request):
     user = request.user
+    print(f"User data: {user.username}, {user.email}, {user.first_name}, {user.last_name}")  # Debugging
     serializer = UserSerializer(user, many=False)
     return Response(serializer.data)
 
@@ -45,28 +54,25 @@ class RegisterAPIView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
 
     def post(self, request, *args, **kwargs):
-        # Get the data from the request
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
-        user = serializer.save()  # Create the user
+        user = serializer.save()
 
         # Generate JWT tokens for the new user
         refresh = RefreshToken.for_user(user)
 
-        # Return response with user data and tokens
         return Response({
             "user": {
                 "username": user.username,
                 "email": user.email,
+                "first_name": user.first_name,
+                "last_name": user.last_name
             },
             "refresh": str(refresh),
             "access": str(refresh.access_token),
         }, status=status.HTTP_201_CREATED)
 
-
-
-# views.py
-
+# Custom Login API View to handle login and token generation
 class CustomLoginAPIView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
@@ -74,18 +80,11 @@ class CustomLoginAPIView(TokenObtainPairView):
         print("Request Body:", request.data)  # Debugging: Print request data
         return super().post(request, *args, **kwargs)
 
-
-import json
-from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
-
-
-
+# Check if an email is already in use
 @csrf_exempt
 def check_email(request):
     if request.method == "POST":
         try:
-            # Parse the JSON body of the request
             body = json.loads(request.body)
             email = body.get('email', None)
 
@@ -102,34 +101,15 @@ def check_email(request):
 
     return JsonResponse({'error': 'Invalid request method.'}, status=405)
 
-
-
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from rest_framework import status
-from .models import CustomUser
-from .serializers import CustomUserSerializer
-
+# View to get the user's profile information
 class UserProfileView(APIView):
-    permission_classes = [IsAuthenticated]  # Ensure that the user is authenticated
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
 
     def get(self, request):
-        """
-        Get the user profile information.
-        """
-        user = request.user  # This gives the current logged-in user
-        serializer = CustomUserSerializer(user)
-        return Response(serializer.data, status=status.HTTP_200_OK)
-
-    def put(self, request):
-        """
-        Update the user profile information.
-        """
-        user = request.user
-        serializer = CustomUserSerializer(user, data=request.data, partial=True)  # Allow partial updates
-        if serializer.is_valid():
-            serializer.save()  # Save the updated data
-            return Response(serializer.data, status=status.HTTP_200_OK)
-        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        return Response({
+            'username': request.user.username,
+            'email': request.user.email,
+            'first_name': request.user.first_name,
+            'last_name': request.user.last_name,
+        })

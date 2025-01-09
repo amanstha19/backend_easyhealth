@@ -30,6 +30,7 @@ urlpatterns = [
 
     path('check-email/', views.check_email, name='check_email'),  # Check if an email is already registered
 
-    path('profile/', UserProfileView.as_view(), name='user-profile'),  # Profile endpoint
+    path('user/profile/', UserProfileView.as_view(), name='user-profile'),  # Profile endpoint
+
 
 ]
