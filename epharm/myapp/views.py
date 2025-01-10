@@ -15,6 +15,7 @@ from rest_framework.decorators import api_view, permission_classes
 import json
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
+from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.views import TokenRefreshView
 
 # Get all available routes
@@ -48,8 +49,8 @@ def getUserProfile(request):
     print(f"User data: {user.username}, {user.email}, {user.first_name}, {user.last_name}")  # Debugging
     serializer = UserSerializer(user, many=False)
     return Response(serializer.data)
+from rest_framework_simplejwt.tokens import RefreshToken
 
-# Register API View to create a new user
 class RegisterAPIView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
 
@@ -58,8 +59,11 @@ class RegisterAPIView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
-        # Generate JWT tokens for the new user
+        # Generate RefreshToken for the new user
         refresh = RefreshToken.for_user(user)
+
+        # Access the access_token from the RefreshToken instance
+        access_token = refresh.access_token  # This should work correctly
 
         return Response({
             "user": {
@@ -69,8 +73,9 @@ class RegisterAPIView(generics.CreateAPIView):
                 "last_name": user.last_name
             },
             "refresh": str(refresh),
-            "access": str(refresh.access_token),
+            "access": str(access_token),  # Use the access_token
         }, status=status.HTTP_201_CREATED)
+
 
 # Custom Login API View to handle login and token generation
 class CustomLoginAPIView(TokenObtainPairView):
