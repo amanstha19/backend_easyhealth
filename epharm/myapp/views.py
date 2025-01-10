@@ -1,8 +1,8 @@
-# views.py
-
 from rest_framework.views import APIView
+from rest_framework import permissions
+
 from .serializers import ProductSerializer, UserSerializer, RegisterSerializer
-from .models import Product, CustomUser
+from .models import Product, CustomUser, Cart, CartItem
 from django.shortcuts import get_object_or_404
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -49,8 +49,8 @@ def getUserProfile(request):
     print(f"User data: {user.username}, {user.email}, {user.first_name}, {user.last_name}")  # Debugging
     serializer = UserSerializer(user, many=False)
     return Response(serializer.data)
-from rest_framework_simplejwt.tokens import RefreshToken
 
+# Register new user
 class RegisterAPIView(generics.CreateAPIView):
     serializer_class = RegisterSerializer
 
@@ -75,7 +75,6 @@ class RegisterAPIView(generics.CreateAPIView):
             "refresh": str(refresh),
             "access": str(access_token),  # Use the access_token
         }, status=status.HTTP_201_CREATED)
-
 
 # Custom Login API View to handle login and token generation
 class CustomLoginAPIView(TokenObtainPairView):
@@ -118,3 +117,71 @@ class UserProfileView(APIView):
             'first_name': request.user.first_name,
             'last_name': request.user.last_name,
         })
+
+# Add product to the cart
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def add_to_cart(request, product_id):
+    product = get_object_or_404(Product, id=product_id)
+
+    # Get or create a cart for the user
+    cart, created = Cart.objects.get_or_create(user=request.user)
+
+    # Check if the item is already in the cart
+    cart_item, created = CartItem.objects.get_or_create(product=product, cart=cart, defaults={'quantity': 1})
+
+    if not created:  # If the item is already in the cart, increase the quantity
+        cart_item.quantity += 1
+        cart_item.save()
+
+    # Add the item to the cart
+    cart.items.add(cart_item)
+
+    return Response({'message': 'Item added to cart', 'cart_item_id': cart_item.id}, status=status.HTTP_200_OK)
+
+# Remove product from the cart
+@api_view(['DELETE'])
+@permission_classes([permissions.IsAuthenticated])
+def remove_from_cart(request, product_id):
+    cart = get_object_or_404(Cart, user=request.user)
+
+    try:
+        cart_item = get_object_or_404(CartItem, product_id=product_id, cart=cart)
+        cart.items.remove(cart_item)  # Remove item from the cart
+
+        # Check if there are no other instances of this cart_item in the cart
+        if cart.items.filter(id=cart_item.id).count() == 0:
+            cart_item.delete()  # Delete cart item if no other reference exists
+
+        return Response({'message': 'Item removed from cart'}, status=status.HTTP_200_OK)
+    except CartItem.DoesNotExist:
+        return Response({'error': 'Item not found in cart'}, status=status.HTTP_404_NOT_FOUND)
+
+# View cart and calculate total price
+class ViewCart(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def get(self, request):
+        cart = get_object_or_404(Cart, user=request.user)
+        items = cart.items.all()
+
+        if not items:
+            return Response({'message': 'Your cart is empty'}, status=status.HTTP_200_OK)
+
+        total_price = sum(item.product.price * item.quantity for item in items)
+        cart_data = [{'product_name': item.product.name, 'quantity': item.quantity, 'price': item.product.price,
+                      'total_item_price': item.product.price * item.quantity} for item in items]
+
+        return Response({'cart': cart_data, 'total_price': total_price}, status=status.HTTP_200_OK)
+
+# Proceed with checkout (clear cart)
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def checkout(request):
+    cart = get_object_or_404(Cart, user=request.user)
+
+    # Process checkout logic (e.g., creating an order)
+    # For now, we'll just clear the cart
+    cart.items.clear()
+
+    return Response({'message': 'Checkout complete, your cart is now empty.'}, status=status.HTTP_200_OK)

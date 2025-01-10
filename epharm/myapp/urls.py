@@ -17,13 +17,18 @@ urlpatterns = [
     path('token/verify/', TokenVerifyView.as_view(), name='token_verify'),  # Verify token route
 
     # User Profile Route (protected)
-    path('user/profile/', views.getUserProfile, name='get_user_profile'),  # Accessible at /api/user/profile
+    path('user/profile/', UserProfileView.as_view(), name='user-profile'),  # Profile endpoint
 
     # Registration Route (Signup)
     path('register/', views.RegisterAPIView.as_view(), name='register'),  # Register a new user
-    path('api/token/', CustomLoginAPIView.as_view(), name='login'),
+    path('login/', CustomLoginAPIView.as_view(), name='login'),  # Custom login view for JWT tokens
 
+    # Check if an email is already registered
     path('check-email/', views.check_email, name='check_email'),  # Check if an email is already registered
 
-    path('user/profile/', UserProfileView.as_view(), name='user-profile'),  # Profile endpoint
+    # Cart Routes
+    path('cart/', views.ViewCart.as_view(), name='view_cart'),  # View the cart and calculate total
+    path('cart/add/<int:product_id>/', views.add_to_cart, name='add_to_cart'),  # Add product to cart
+    path('cart/remove/<int:product_id>/', views.remove_from_cart, name='remove_from_cart'),  # Remove product from cart
+    path('cart/checkout/', views.checkout, name='checkout'),  # Proceed with checkout and clear cart
 ]

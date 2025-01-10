@@ -4,7 +4,7 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Product, CustomUser  # Assuming CustomUser is your model
-
+from .models import Product, Cart, CartItem
 # Product Serializer
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
@@ -71,3 +71,28 @@ class CustomUserSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser  # Ensure this is your custom user model
         fields = ['id', 'username', 'email', 'first_name', 'last_name', 'city', 'country', 'phone']
+
+
+# Product Serializer
+class ProductSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Product
+        fields = ['id', 'name', 'price', 'image']
+
+
+# CartItem Serializer
+class CartItemSerializer(serializers.ModelSerializer):
+    product = ProductSerializer()
+
+    class Meta:
+        model = CartItem
+        fields = ['product', 'quantity']
+
+
+# Cart Serializer
+class CartSerializer(serializers.ModelSerializer):
+    items = CartItemSerializer(many=True)
+
+    class Meta:
+        model = Cart
+        fields = ['id', 'items']
