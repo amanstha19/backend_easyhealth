@@ -4,13 +4,8 @@ from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 from .models import Product, CustomUser  # Assuming CustomUser is your model
-from .models import Product, Cart, CartItem
+from .models import Product, Cart, CartItem,Order
 # Product Serializer
-class ProductSerializer(serializers.ModelSerializer):
-    class Meta:
-        model = Product
-        fields = '__all__'
-
 
 # User Serializer for creating and managing users (register)
 class RegisterSerializer(serializers.ModelSerializer):
@@ -77,7 +72,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
-        fields = ['id', 'name', 'price', 'image']
+        fields = ['id', 'name', 'price', 'image', 'prescription_required']
 
 
 # CartItem Serializer
@@ -96,3 +91,14 @@ class CartSerializer(serializers.ModelSerializer):
     class Meta:
         model = Cart
         fields = ['id', 'items']
+
+
+
+
+from rest_framework import serializers
+from .models import Order
+
+class OrderSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Order
+        fields = ['id', 'user', 'items', 'total_price', 'status', 'created_at']

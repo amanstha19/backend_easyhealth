@@ -1,27 +1,45 @@
 from django.contrib import admin
-from .models import Product
+from .models import Product, CustomUser, Cart, CartItem, Order
 
+# Admin for Product model
 class ProductAdmin(admin.ModelAdmin):
-    list_display = ('name', 'generic_name', 'price', 'created_at')
-    search_fields = ['name', 'generic_name']  # Optional: allows searching by these fields
-    list_filter = ['category']  # Optional: adds a filter sidebar by category
+    list_display = ('name', 'generic_name', 'price', 'category', 'stock', 'prescription_required', 'created_at')
+    search_fields = ('name', 'generic_name', 'description')
+    list_filter = ('category', 'prescription_required')
 
 admin.site.register(Product, ProductAdmin)
 
-
-
-
-from django.contrib import admin
-from django.contrib.auth.admin import UserAdmin
-from .models import CustomUser
-
-class CustomUserAdmin(UserAdmin):
-    model = CustomUser
-    fieldsets = UserAdmin.fieldsets + (
-        (None, {'fields': ('city', 'country', 'phone')}),
-    )
-    add_fieldsets = UserAdmin.add_fieldsets + (
-        (None, {'fields': ('city', 'country', 'phone')}),
-    )
+# Admin for CustomUser model
+class CustomUserAdmin(admin.ModelAdmin):
+    list_display = ('username', 'email', 'first_name', 'last_name', 'city', 'country', 'phone')
+    search_fields = ('username', 'email', 'first_name', 'last_name', 'city', 'country', 'phone')
 
 admin.site.register(CustomUser, CustomUserAdmin)
+
+# Admin for Cart model
+class CartAdmin(admin.ModelAdmin):
+    list_display = ('user',)
+    search_fields = ('user__username',)
+
+admin.site.register(Cart, CartAdmin)
+
+# Admin for CartItem model
+class CartItemAdmin(admin.ModelAdmin):
+    list_display = ('product', 'quantity', 'cart_user')
+    search_fields = ('product__name',)
+    list_filter = ('product__category',)
+
+    # Custom method to show the related cart's user
+    def cart_user(self, obj):
+        return obj.cart.user.username
+    cart_user.short_description = 'Cart User'
+
+admin.site.register(CartItem, CartItemAdmin)
+
+# Admin for Order model
+class OrderAdmin(admin.ModelAdmin):
+    list_display = ('id', 'user', 'total_price', 'status', 'created_at', 'updated_at')
+    search_fields = ('user__username', 'status')
+    list_filter = ('status', 'created_at')
+
+admin.site.register(Order, OrderAdmin)

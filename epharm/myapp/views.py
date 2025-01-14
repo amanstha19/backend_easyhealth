@@ -1,8 +1,8 @@
 from rest_framework.views import APIView
 from rest_framework import permissions
-
-from .serializers import ProductSerializer, UserSerializer, RegisterSerializer
-from .models import Product, CustomUser, Cart, CartItem
+import logging
+from .serializers import ProductSerializer, UserSerializer, RegisterSerializer, OrderSerializer
+from .models import Product, CustomUser, Cart, CartItem, Order
 from django.shortcuts import get_object_or_404
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -15,8 +15,10 @@ from rest_framework.decorators import api_view, permission_classes
 import json
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
-from rest_framework_simplejwt.tokens import RefreshToken
-from rest_framework_simplejwt.views import TokenRefreshView
+from django.db import transaction
+
+# Logging setup
+logger = logging.getLogger(__name__)
 
 # Get all available routes
 @api_view(['GET'])
@@ -38,7 +40,7 @@ def getProduct(request, pk):
         serializer = ProductSerializer(product, many=False)
         return Response(serializer.data)
     except Exception as e:
-        print(f"Error fetching product: {e}")
+        logger.error(f"Error fetching product: {e}")
         return Response({'error': 'Product not found'}, status=404)
 
 # Get user profile (protected route)
@@ -46,7 +48,7 @@ def getProduct(request, pk):
 @permission_classes([IsAuthenticated])
 def getUserProfile(request):
     user = request.user
-    print(f"User data: {user.username}, {user.email}, {user.first_name}, {user.last_name}")  # Debugging
+    logger.debug(f"User data: {user.username}, {user.email}, {user.first_name}, {user.last_name}")
     serializer = UserSerializer(user, many=False)
     return Response(serializer.data)
 
@@ -63,7 +65,7 @@ class RegisterAPIView(generics.CreateAPIView):
         refresh = RefreshToken.for_user(user)
 
         # Access the access_token from the RefreshToken instance
-        access_token = refresh.access_token  # This should work correctly
+        access_token = refresh.access_token
 
         return Response({
             "user": {
@@ -81,7 +83,7 @@ class CustomLoginAPIView(TokenObtainPairView):
     serializer_class = CustomTokenObtainPairSerializer
 
     def post(self, request, *args, **kwargs):
-        print("Request Body:", request.data)  # Debugging: Print request data
+        logger.debug("Request Body:", request.data)
         return super().post(request, *args, **kwargs)
 
 # Check if an email is already in use
@@ -185,3 +187,52 @@ def checkout(request):
     cart.items.clear()
 
     return Response({'message': 'Checkout complete, your cart is now empty.'}, status=status.HTTP_200_OK)
+
+class PlaceOrderView(APIView):
+    permission_classes = [IsAuthenticated]
+    authentication_classes = [JWTAuthentication]
+
+    def post(self, request):
+        try:
+            cart_items_data = request.data.get('cart_items')
+            address = request.data.get('address')
+            prescription = request.data.get('prescription', None)
+
+            if not cart_items_data or not address:
+                return Response({"detail": "Missing cart items or address."}, status=status.HTTP_400_BAD_REQUEST)
+
+            cart_items = json.loads(cart_items_data)
+            total_price = 0
+
+            # Start a database transaction
+            with transaction.atomic():
+                # Calculate total price and create the order object
+                for item in cart_items:
+                    product = Product.objects.get(id=item['id'])
+                    total_price += product.price * item['quantity']
+
+                order = Order.objects.create(user=request.user, total_price=total_price, address=address)
+
+                # Process cart items and add them to the order
+                for item in cart_items:
+                    product = Product.objects.get(id=item['id'])
+                    CartItem.objects.create(
+                        product=product,
+                        quantity=item['quantity'],
+                        order=order  # Correctly associate CartItem with Order
+                    )
+
+                # Handle prescription file upload if provided
+                if prescription:
+                    prescription_file = request.FILES.get('prescription')
+                    if prescription_file:
+                        order.prescription = prescription_file
+                        order.save()
+
+                return Response({"order_id": order.id}, status=status.HTTP_201_CREATED)
+
+        except Product.DoesNotExist:
+            return Response({"detail": "Product not found."}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            logger.error(f"Error placing order: {str(e)}")
+            return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
