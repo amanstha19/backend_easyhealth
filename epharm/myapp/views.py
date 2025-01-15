@@ -133,6 +133,8 @@ def add_to_cart(request, product_id):
     cart_item, created = CartItem.objects.get_or_create(product=product, cart=cart, defaults={'quantity': 1})
 
     if not created:  # If the item is already in the cart, increase the quantity
+        if product.stock < cart_item.quantity + 1:
+            return Response({'error': 'Not enough stock for this product.'}, status=status.HTTP_400_BAD_REQUEST)
         cart_item.quantity += 1
         cart_item.save()
 
@@ -182,8 +184,11 @@ class ViewCart(APIView):
 def checkout(request):
     cart = get_object_or_404(Cart, user=request.user)
 
+    # Check if the cart has any items before proceeding
+    if cart.items.count() == 0:
+        return Response({'message': 'Your cart is empty'}, status=status.HTTP_400_BAD_REQUEST)
+
     # Process checkout logic (e.g., creating an order)
-    # For now, we'll just clear the cart
     cart.items.clear()
 
     return Response({'message': 'Checkout complete, your cart is now empty.'}, status=status.HTTP_200_OK)
@@ -208,14 +213,14 @@ class PlaceOrderView(APIView):
             with transaction.atomic():
                 # Calculate total price and create the order object
                 for item in cart_items:
-                    product = Product.objects.get(id=item['id'])
+                    product = get_object_or_404(Product, id=item['id'])
                     total_price += product.price * item['quantity']
 
                 order = Order.objects.create(user=request.user, total_price=total_price, address=address)
 
                 # Process cart items and add them to the order
                 for item in cart_items:
-                    product = Product.objects.get(id=item['id'])
+                    product = get_object_or_404(Product, id=item['id'])
                     CartItem.objects.create(
                         product=product,
                         quantity=item['quantity'],
@@ -236,3 +241,15 @@ class PlaceOrderView(APIView):
         except Exception as e:
             logger.error(f"Error placing order: {str(e)}")
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# Order Detail View
+class OrderDetailView(APIView):
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, pk):
+        try:
+            order = Order.objects.get(pk=pk, user=request.user)
+            serializer = OrderSerializer(order)
+            return Response(serializer.data)
+        except Order.DoesNotExist:
+            return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)

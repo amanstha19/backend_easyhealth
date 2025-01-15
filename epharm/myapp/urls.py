@@ -33,4 +33,6 @@ urlpatterns = [
     path('cart/checkout/', views.checkout, name='checkout'),  # Proceed with checkout and clear cart
 
     path('order/place/', PlaceOrderView.as_view(), name='place-order'),
+
+    path('order/<int:pk>/', views.OrderDetailView.as_view(), name='order-detail'),
 ]

@@ -3,9 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Product, CustomUser  # Assuming CustomUser is your model
-from .models import Product, Cart, CartItem,Order
-# Product Serializer
+from .models import Product, CustomUser, Cart, CartItem, Order
 
 # User Serializer for creating and managing users (register)
 class RegisterSerializer(serializers.ModelSerializer):
@@ -93,12 +91,15 @@ class CartSerializer(serializers.ModelSerializer):
         fields = ['id', 'items']
 
 
-
-
-from rest_framework import serializers
-from .models import Order
-
+# Order Serializer (includes CartItem details for the order)
 class OrderSerializer(serializers.ModelSerializer):
+    items = serializers.SerializerMethodField()
+
     class Meta:
         model = Order
         fields = ['id', 'user', 'items', 'total_price', 'status', 'created_at']
+
+    def get_items(self, obj):
+        # Fetch related CartItems for the order
+        cart_items = CartItem.objects.filter(order=obj)
+        return CartItemSerializer(cart_items, many=True).data

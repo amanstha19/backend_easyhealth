@@ -12,7 +12,7 @@ class CustomUser(AbstractUser):
         verbose_name_plural = 'Custom Users'
 
     def __str__(self):
-        return self.username  # Returns the username for the custom user model
+        return self.username
 
 # Product model
 class Product(models.Model):
@@ -29,7 +29,7 @@ class Product(models.Model):
     )
 
     id = models.AutoField(primary_key=True)
-    generic_name = models.CharField(max_length=200, null=True, blank=True)  # Scientific or generic name
+    generic_name = models.CharField(max_length=200, null=True, blank=True)
     name = models.CharField(max_length=200, blank=True, null=True)
     image = models.ImageField(upload_to='products/', null=True, blank=True)
     category = models.CharField(max_length=50, choices=CATEGORIES)
@@ -50,7 +50,7 @@ class Order(models.Model):
     status = models.CharField(max_length=20, default='Pending')  # Example: Pending, Completed, etc.
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
-    address = models.TextField(null=True, blank=True)  # Add this line
+    address = models.TextField(null=True, blank=True)  # Optional: Store address with the order
 
     def __str__(self):
         return f"Order {self.id} - {self.status}"
@@ -59,10 +59,10 @@ class Order(models.Model):
 class CartItem(models.Model):
     product = models.ForeignKey(Product, on_delete=models.CASCADE)
     quantity = models.PositiveIntegerField(default=1)
-    order = models.ForeignKey(Order, on_delete=models.CASCADE, null=True, blank=True)
+    order = models.ForeignKey(Order, on_delete=models.CASCADE, null=True, blank=True)  # Link to the order
 
     def __str__(self):
-        return f"{self.quantity} x {self.product.name}"  # String representation of the cart item
+        return f"{self.quantity} x {self.product.name}"
 
 # Cart model
 class Cart(models.Model):
@@ -70,4 +70,4 @@ class Cart(models.Model):
     items = models.ManyToManyField(CartItem, blank=True)
 
     def __str__(self):
-        return f"Cart of {self.user.username}"  # Correctly referencing the 'username' attribute of the related CustomUser
+        return f"Cart of {self.user.username}"  # Referring to user’s username directly
