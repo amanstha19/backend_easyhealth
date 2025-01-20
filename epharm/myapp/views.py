@@ -1,14 +1,13 @@
 from rest_framework.views import APIView
 from rest_framework import permissions
-import logging
-from .serializers import ProductSerializer, UserSerializer, RegisterSerializer, OrderSerializer
+from .serializers import ProductSerializer, UserSerializer, RegisterSerializer, OrderSerializer, \
+    CustomTokenObtainPairSerializer, CartItemSerializer
 from .models import Product, CustomUser, Cart, CartItem, Order
 from django.shortcuts import get_object_or_404
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import generics, status
 from rest_framework_simplejwt.views import TokenObtainPairView
-from .serializers import CustomTokenObtainPairSerializer
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.decorators import api_view, permission_classes
@@ -16,23 +15,21 @@ import json
 from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from django.db import transaction
-
+import logging
+from django.core.cache import cache
 # Logging setup
 logger = logging.getLogger(__name__)
 
-# Get all available routes
 @api_view(['GET'])
 def getRoutes(request):
     return Response({'message': 'Hello from Django!'})
 
-# Get all products
 @api_view(['GET'])
 def getProducts(request):
     products = Product.objects.all()
     serializer = ProductSerializer(products, many=True)
     return Response(serializer.data)
 
-# Get a specific product by ID
 @api_view(['GET'])
 def getProduct(request, pk):
     try:
@@ -42,15 +39,6 @@ def getProduct(request, pk):
     except Exception as e:
         logger.error(f"Error fetching product: {e}")
         return Response({'error': 'Product not found'}, status=404)
-
-# Get user profile (protected route)
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def getUserProfile(request):
-    user = request.user
-    logger.debug(f"User data: {user.username}, {user.email}, {user.first_name}, {user.last_name}")
-    serializer = UserSerializer(user, many=False)
-    return Response(serializer.data)
 
 # Register new user
 class RegisterAPIView(generics.CreateAPIView):
@@ -63,8 +51,6 @@ class RegisterAPIView(generics.CreateAPIView):
 
         # Generate RefreshToken for the new user
         refresh = RefreshToken.for_user(user)
-
-        # Access the access_token from the RefreshToken instance
         access_token = refresh.access_token
 
         return Response({
@@ -75,7 +61,7 @@ class RegisterAPIView(generics.CreateAPIView):
                 "last_name": user.last_name
             },
             "refresh": str(refresh),
-            "access": str(access_token),  # Use the access_token
+            "access": str(access_token),
         }, status=status.HTTP_201_CREATED)
 
 # Custom Login API View to handle login and token generation
@@ -124,74 +110,208 @@ class UserProfileView(APIView):
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def add_to_cart(request, product_id):
-    product = get_object_or_404(Product, id=product_id)
+    try:
+        product = get_object_or_404(Product, id=product_id)
+        cart, created = Cart.objects.get_or_create(user=request.user)
 
-    # Get or create a cart for the user
-    cart, created = Cart.objects.get_or_create(user=request.user)
+        cart_item, created = CartItem.objects.get_or_create(
+            cart=cart,
+            product=product,
+            defaults={'quantity': 1}
+        )
 
-    # Check if the item is already in the cart
-    cart_item, created = CartItem.objects.get_or_create(product=product, cart=cart, defaults={'quantity': 1})
+        if not created:
+            cart_item.quantity += 1
 
-    if not created:  # If the item is already in the cart, increase the quantity
-        if product.stock < cart_item.quantity + 1:
-            return Response({'error': 'Not enough stock for this product.'}, status=status.HTTP_400_BAD_REQUEST)
-        cart_item.quantity += 1
+        # Handle prescription file upload if required
+        if product.prescription_required:
+            prescription_file = request.FILES.get('prescription')
+            if prescription_file:
+                cart_item.prescription_file = prescription_file
+
         cart_item.save()
 
-    # Add the item to the cart
-    cart.items.add(cart_item)
+        items = cart.cart_items.all()
+        cart_items = [{
+            'id': item.id,
+            'product_id': item.product.id,
+            'name': item.product.name,
+            'quantity': item.quantity,
+            'price': float(item.product.price),
+            'total_item_price': float(item.product.price * item.quantity),
+            'image': request.build_absolute_uri(item.product.image.url) if item.product.image else None,
+        } for item in items]
 
-    return Response({'message': 'Item added to cart', 'cart_item_id': cart_item.id}, status=status.HTTP_200_OK)
+        total_price = float(sum(item['total_item_price'] for item in cart_items))
 
-# Remove product from the cart
+        return Response({
+            'cart_items': cart_items,
+            'total_price': total_price
+        }, status=200)
+
+    except Product.DoesNotExist:
+        logger.error(f"Product with ID {product_id} not found.")
+        return Response({'error': 'Product not found'}, status=404)
+    except Exception as e:
+        logger.error(f"Error adding to cart: {e}")
+        return Response({'error': str(e)}, status=500)
+
+
 @api_view(['DELETE'])
 @permission_classes([permissions.IsAuthenticated])
 def remove_from_cart(request, product_id):
-    cart = get_object_or_404(Cart, user=request.user)
-
     try:
-        cart_item = get_object_or_404(CartItem, product_id=product_id, cart=cart)
-        cart.items.remove(cart_item)  # Remove item from the cart
+        cart = Cart.objects.filter(user=request.user).first()
 
-        # Check if there are no other instances of this cart_item in the cart
-        if cart.items.filter(id=cart_item.id).count() == 0:
-            cart_item.delete()  # Delete cart item if no other reference exists
+        # If cart doesn't exist, return empty response
+        if not cart:
+            return Response({
+                'cart_items': [],
+                'total_price': 0
+            }, status=status.HTTP_200_OK)
 
-        return Response({'message': 'Item removed from cart'}, status=status.HTTP_200_OK)
-    except CartItem.DoesNotExist:
-        return Response({'error': 'Item not found in cart'}, status=status.HTTP_404_NOT_FOUND)
+        # Try to get the cart item
+        cart_item = CartItem.objects.filter(cart=cart, product_id=product_id).first()
 
-# View cart and calculate total price
+        # If cart item doesn't exist, log it and return current cart state
+        if not cart_item:
+            logger.warning(
+                f"Attempted to remove non-existent cart item. User: {request.user.id}, Product: {product_id}")
+            items = cart.cart_items.all()
+        else:
+            # Delete the cart item if it exists
+            cart_item.delete()
+            items = cart.cart_items.all()
+
+        # Get updated cart items
+        cart_items = [{
+            'id': item.id,
+            'product_id': item.product.id,
+            'name': item.product.name,
+            'quantity': item.quantity,
+            'price': float(item.product.price),
+            'total_item_price': float(item.product.price * item.quantity),
+            'image': request.build_absolute_uri(item.product.image.url) if item.product.image else None,
+            'prescription': request.build_absolute_uri(item.prescription_file.url) if item.prescription_file else None
+        } for item in items]
+
+        total_price = float(sum(item['total_item_price'] for item in cart_items))
+
+        return Response({
+            'cart_items': cart_items,
+            'total_price': total_price
+        }, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error removing item from cart: {str(e)}", exc_info=True)
+        return Response({
+            'error': 'An error occurred while removing the item from cart'
+        }, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+# View cart
 class ViewCart(APIView):
     permission_classes = [permissions.IsAuthenticated]
 
     def get(self, request):
-        cart = get_object_or_404(Cart, user=request.user)
-        items = cart.items.all()
+        try:
+            cart = get_object_or_404(Cart, user=request.user)
+            items = cart.cart_items.all()
 
-        if not items:
-            return Response({'message': 'Your cart is empty'}, status=status.HTTP_200_OK)
+            if not items:
+                return Response({'cart_items': []}, status=200)
 
-        total_price = sum(item.product.price * item.quantity for item in items)
-        cart_data = [{'product_name': item.product.name, 'quantity': item.quantity, 'price': item.product.price,
-                      'total_item_price': item.product.price * item.quantity} for item in items]
+            cart_items = [{
+                'id': item.id,
+                'product_id': item.product.id,
+                'name': item.product.name,
+                'quantity': item.quantity,
+                'price': float(item.product.price),
+                'total_item_price': float(item.product.price * item.quantity),
+                'image': request.build_absolute_uri(item.product.image.url) if item.product.image else None,
+                'prescription': request.build_absolute_uri(item.prescription_file.url) if item.prescription_file else None
+            } for item in items]
 
-        return Response({'cart': cart_data, 'total_price': total_price}, status=status.HTTP_200_OK)
+            total_price = float(sum(item['total_item_price'] for item in cart_items))
 
-# Proceed with checkout (clear cart)
+            return Response({
+                'cart_items': cart_items,
+                'total_price': total_price
+            }, status=200)
+
+        except Exception as e:
+            logger.error(f"Error viewing cart: {e}")
+            return Response({'error': 'Error viewing cart'}, status=500)
+
+
+@api_view(['POST'])
+@permission_classes([permissions.IsAuthenticated])
+def update_cart_item_quantity(request, product_id):
+    action = request.data.get('action')
+
+    if action not in ['increase', 'decrease']:
+        return Response({"error": "Invalid action"}, status=status.HTTP_400_BAD_REQUEST)
+
+    try:
+        cart = Cart.objects.get(user=request.user)
+        cart_item = CartItem.objects.get(cart=cart, product_id=product_id)
+
+        if action == 'increase':
+            cart_item.quantity += 1
+        elif action == 'decrease' and cart_item.quantity > 1:
+            cart_item.quantity -= 1
+        else:
+            return Response({"error": "Quantity cannot be decreased further."}, status=status.HTTP_400_BAD_REQUEST)
+
+        cart_item.save()
+
+        # Get all cart items for response
+        items = cart.cart_items.all()
+        cart_items = [{
+            'id': item.id,
+            'product_id': item.product.id,
+            'name': item.product.name,
+            'quantity': item.quantity,
+            'price': float(item.product.price),
+            'total_item_price': float(item.product.price * item.quantity),
+            'image': request.build_absolute_uri(item.product.image.url) if item.product.image else None,
+        } for item in items]
+
+        total_price = float(sum(item['total_item_price'] for item in cart_items))
+
+        return Response({
+            'cart_items': cart_items,
+            'total_price': total_price
+        })
+
+    except Cart.DoesNotExist:
+        return Response({"error": "Cart not found."}, status=status.HTTP_404_NOT_FOUND)
+    except CartItem.DoesNotExist:
+        return Response({"error": "Item not found in cart."}, status=status.HTTP_404_NOT_FOUND)
 @api_view(['POST'])
 @permission_classes([permissions.IsAuthenticated])
 def checkout(request):
-    cart = get_object_or_404(Cart, user=request.user)
+    try:
+        cart = get_object_or_404(Cart, user=request.user)
 
-    # Check if the cart has any items before proceeding
-    if cart.items.count() == 0:
-        return Response({'message': 'Your cart is empty'}, status=status.HTTP_400_BAD_REQUEST)
+        if cart.cart_items.count() == 0:
+            return Response({'message': 'Your cart is empty'}, status=status.HTTP_400_BAD_REQUEST)
 
-    # Process checkout logic (e.g., creating an order)
-    cart.items.clear()
+        total_price = sum([item.product.price * item.quantity for item in cart.cart_items.all()])
+        order = Order.objects.create(user=request.user, total_price=total_price, status="pending", address=request.data.get('address'))
 
-    return Response({'message': 'Checkout complete, your cart is now empty.'}, status=status.HTTP_200_OK)
+        for cart_item in cart.cart_items.all():
+            cart_item.order = order
+            cart_item.save()
+
+        # Clear the cart after creating the order
+        cart.cart_items.all().delete()
+
+        return Response({'message': 'Checkout complete, your cart is now empty.', 'order_id': order.id}, status=status.HTTP_200_OK)
+
+    except Exception as e:
+        logger.error(f"Error during checkout: {e}")
+        return Response({'error': str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
 
 class PlaceOrderView(APIView):
     permission_classes = [IsAuthenticated]
@@ -209,25 +329,21 @@ class PlaceOrderView(APIView):
             cart_items = json.loads(cart_items_data)
             total_price = 0
 
-            # Start a database transaction
             with transaction.atomic():
-                # Calculate total price and create the order object
                 for item in cart_items:
                     product = get_object_or_404(Product, id=item['id'])
                     total_price += product.price * item['quantity']
 
                 order = Order.objects.create(user=request.user, total_price=total_price, address=address)
 
-                # Process cart items and add them to the order
                 for item in cart_items:
                     product = get_object_or_404(Product, id=item['id'])
                     CartItem.objects.create(
                         product=product,
                         quantity=item['quantity'],
-                        order=order  # Correctly associate CartItem with Order
+                        order=order
                     )
 
-                # Handle prescription file upload if provided
                 if prescription:
                     prescription_file = request.FILES.get('prescription')
                     if prescription_file:
@@ -242,7 +358,7 @@ class PlaceOrderView(APIView):
             logger.error(f"Error placing order: {str(e)}")
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-# Order Detail View
+
 class OrderDetailView(APIView):
     permission_classes = [IsAuthenticated]
 
@@ -253,3 +369,19 @@ class OrderDetailView(APIView):
             return Response(serializer.data)
         except Order.DoesNotExist:
             return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+@api_view(['PATCH'])
+def update_order_status(request, order_id):
+    try:
+        order = Order.objects.get(id=order_id)
+    except Order.DoesNotExist:
+        return Response({"message": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
+    status = request.data.get('status')
+
+    if status not in ['pending', 'shipped', 'delivered']:  # Example statuses
+        return Response({"message": "Invalid status."}, status=status.HTTP_400_BAD_REQUEST)
+
+    order.status = status
+    order.save()
+
+    return Response({"message": "Order status updated successfully.", "order_id": order.id}, status=status.HTTP_200_OK)

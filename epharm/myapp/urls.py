@@ -1,6 +1,6 @@
 from django.urls import path
 from . import views
-from .views import CustomLoginAPIView, UserProfileView,PlaceOrderView
+from .views import CustomLoginAPIView, UserProfileView, PlaceOrderView, update_cart_item_quantity, update_order_status
 from rest_framework_simplejwt.views import TokenObtainPairView, TokenRefreshView, TokenVerifyView
 
 urlpatterns = [
@@ -32,7 +32,10 @@ urlpatterns = [
     path('cart/remove/<int:product_id>/', views.remove_from_cart, name='remove_from_cart'),  # Remove product from cart
     path('cart/checkout/', views.checkout, name='checkout'),  # Proceed with checkout and clear cart
 
+
     path('order/place/', PlaceOrderView.as_view(), name='place-order'),
 
     path('order/<int:pk>/', views.OrderDetailView.as_view(), name='order-detail'),
+    path('cart/update-item/<int:product_id>/', update_cart_item_quantity, name='update_cart_item_quantity'),
+    path('order/<int:order_id>/status/', update_order_status, name='update_order_status'),
 ]

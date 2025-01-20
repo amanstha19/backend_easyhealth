@@ -38,8 +38,9 @@ admin.site.register(CartItem, CartItemAdmin)
 
 # Admin for Order model
 class OrderAdmin(admin.ModelAdmin):
-    list_display = ('id', 'user', 'total_price', 'status', 'created_at', 'updated_at')
+    list_display = ('id', 'user', 'total_price', 'status', 'created_at', 'prescription')
+    list_editable = ('status',)  # Make status editable directly in the admin panel
+    list_filter = ('status',)
     search_fields = ('user__username', 'status')
-    list_filter = ('status', 'created_at')
 
 admin.site.register(Order, OrderAdmin)
