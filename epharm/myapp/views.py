@@ -1,9 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework import permissions
 from .serializers import ProductSerializer, UserSerializer, RegisterSerializer, OrderSerializer, \
-    CustomTokenObtainPairSerializer, CartItemSerializer
-from .models import Product, CustomUser, Cart, CartItem, Order
-from django.shortcuts import get_object_or_404
+    CustomTokenObtainPairSerializer, ServiceSerializer
+
+from .models import Product, CustomUser, Cart, CartItem, Order, Booking, BookingReport
+from django.shortcuts import get_object_or_404, redirect, render
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
 from rest_framework import generics, status
@@ -16,6 +17,9 @@ from django.views.decorators.csrf import csrf_exempt
 from django.http import JsonResponse
 from django.db import transaction
 import logging
+from rest_framework import viewsets
+from django.http import HttpResponse
+from django.views import View
 from django.core.cache import cache
 # Logging setup
 logger = logging.getLogger(__name__)
@@ -385,3 +389,126 @@ def update_order_status(request, order_id):
     order.save()
 
     return Response({"message": "Order status updated successfully.", "order_id": order.id}, status=status.HTTP_200_OK)
+
+ # Assuming this is the correct admin URL for bookings
+# views.py
+from rest_framework import generics, views, status
+from rest_framework.response import Response
+from rest_framework.permissions import AllowAny
+from django.shortcuts import get_object_or_404
+from django.http import HttpResponse
+from django.utils import timezone
+from .models import Service, Booking, BookingReport
+from .serializers import ServiceSerializer, BookingSerializer, BookingReportSerializer
+
+
+class BookingCreateView(views.APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        serializer = BookingSerializer(data=request.data)
+        if serializer.is_valid():
+            # Check for duplicate bookings
+            existing_booking = Booking.objects.filter(
+                service=serializer.validated_data['service'],
+                booking_date=serializer.validated_data['booking_date'],
+                appointment_time=serializer.validated_data['appointment_time']
+            ).exists()
+
+            if existing_booking:
+                return Response(
+                    {'error': 'This time slot is already booked'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+
+            booking = serializer.save()
+            return Response(serializer.data, status=status.HTTP_201_CREATED)
+        return Response(serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+
+class BookingStatusView(views.APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        mobile_number = request.data.get('mobile_number')
+
+        if not email or not mobile_number:
+            return Response(
+                {'error': 'Both email and mobile number are required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        bookings = Booking.objects.filter(
+            email=email,
+            mobile_number=mobile_number
+        ).order_by('-created_at')
+
+        if not bookings:
+            return Response(
+                {'error': 'No bookings found with these details'},
+                status=status.HTTP_404_NOT_FOUND
+            )
+
+        booking_data = []
+        for booking in bookings:
+            serializer = BookingSerializer(booking)
+            reports = booking.reports.all()
+            report_serializer = BookingReportSerializer(reports, many=True)
+
+            booking_data.append({
+                'booking': serializer.data,
+                'reports': report_serializer.data
+            })
+
+        return Response(booking_data)
+
+
+class ServiceListView(generics.ListCreateAPIView):
+    queryset = Service.objects.all()
+    serializer_class = ServiceSerializer
+    permission_classes = [AllowAny]
+
+
+class ServiceDetailView(generics.RetrieveUpdateDestroyAPIView):
+    queryset = Service.objects.all()
+    serializer_class = ServiceSerializer
+
+
+class ConfirmBookingView(views.APIView):
+    def post(self, request, pk):
+        booking = get_object_or_404(Booking, pk=pk)
+
+        if booking.status != 'pending':
+            return Response(
+                {'error': f'Booking cannot be confirmed (current status: {booking.status})'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        booking.status = 'confirmed'
+        booking.save()
+
+        serializer = BookingSerializer(booking)
+        return Response(serializer.data)
+
+
+def confirm_booking_view(request, pk):
+    booking = get_object_or_404(Booking, pk=pk)
+    # Add your logic for confirming the booking
+    booking.status = 'confirmed'
+    booking.save()
+    return redirect('admin:app_booking_change', pk=booking.pk)
+
+
+def cancel_booking_view(request, pk):
+    booking = get_object_or_404(Booking, pk=pk)
+    # Add your logic for canceling the booking
+    booking.status = 'canceled'
+    booking.save()
+    return redirect('admin:app_booking_change', pk=booking.pk)
+
+
+def upload_report_view(request, pk):
+    booking = get_object_or_404(Booking, pk=pk)
+    # Add your logic for uploading a report
+    return render(request, 'admin/upload_report.html', {'booking': booking})

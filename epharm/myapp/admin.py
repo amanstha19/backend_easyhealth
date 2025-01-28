@@ -1,5 +1,8 @@
 from django.contrib import admin
-from .models import Product, CustomUser, Cart, CartItem, Order
+from django.urls import reverse
+from django.utils.html import format_html
+from .models import Product, CustomUser, Cart, CartItem, Order, Service, Booking, BookingReport
+
 
 # Admin for Product model
 class ProductAdmin(admin.ModelAdmin):
@@ -29,7 +32,6 @@ class CartItemAdmin(admin.ModelAdmin):
     search_fields = ('product__name',)
     list_filter = ('product__category',)
 
-    # Custom method to show the related cart's user
     def cart_user(self, obj):
         return obj.cart.user.username
     cart_user.short_description = 'Cart User'
@@ -44,3 +46,23 @@ class OrderAdmin(admin.ModelAdmin):
     search_fields = ('user__username', 'status')
 
 admin.site.register(Order, OrderAdmin)
+
+class ServiceAdmin(admin.ModelAdmin):
+    list_display = ('name', 'price', 'description')  # Customize what to display in the list view
+    search_fields = ('name',)  # Make name searchable in the admin panel
+    list_filter = ('price',)  # Add filter by price if needed
+
+# Register the Booking model
+@admin.register(Booking)
+class BookingAdmin(admin.ModelAdmin):
+    list_display = ('name', 'mobile_number', 'email', 'service', 'booking_date', 'appointment_time', 'status', 'created_at')
+    search_fields = ('name', 'email', 'mobile_number', 'service__name')  # Search by name, email, mobile, or service name
+    list_filter = ('status', 'booking_date', 'service')  # Add filters for status, date, and service
+    date_hierarchy = 'booking_date'  # Add a date hierarchy filter for easy navigation by date
+
+# Register the BookingReport model
+@admin.register(BookingReport)
+class BookingReportAdmin(admin.ModelAdmin):
+    list_display = ('booking', 'report_file', 'uploaded_at', 'notes')
+    search_fields = ('booking__name', 'booking__service__name')  # Search by booking name and service
+    list_filter = ('uploaded_at',)  # Add filter by upload date
