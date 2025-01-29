@@ -71,8 +71,7 @@ class CustomUserSerializer(serializers.ModelSerializer):
 class ProductSerializer(serializers.ModelSerializer):
     class Meta:
         model = Product
-        fields = ['id', 'name', 'price', 'image', 'prescription_required']
-
+        fields = ['id', 'name', 'price', 'image', 'prescription_required', 'category', 'description']
 
 # CartItem Serializer
 class CartItemSerializer(serializers.ModelSerializer):

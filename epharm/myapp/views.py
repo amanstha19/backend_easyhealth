@@ -512,3 +512,38 @@ def upload_report_view(request, pk):
     booking = get_object_or_404(Booking, pk=pk)
     # Add your logic for uploading a report
     return render(request, 'admin/upload_report.html', {'booking': booking})
+
+import stripe
+from django.conf import settings
+from rest_framework.decorators import api_view, permission_classes
+from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
+from django.http import JsonResponse
+from .models import Order, Payment
+import json
+from django.views.decorators.csrf import csrf_exempt
+
+stripe.api_key = settings.STRIPE_SECRET_KEY
+
+@csrf_exempt
+@api_view(["POST"])
+@permission_classes([IsAuthenticated])
+def create_payment_intent(request):
+    if request.method == "POST":
+        try:
+            data = json.loads(request.body)
+            amount = data.get("amount")
+
+            if not amount:
+                return JsonResponse({"error": "Amount is required"}, status=400)
+
+            intent = stripe.PaymentIntent.create(
+                amount=int(amount),
+                currency="usd",  # You can change the currency as per your requirement
+            )
+
+            return JsonResponse({"clientSecret": intent.client_secret})
+        except Exception as e:
+            return JsonResponse({"error": str(e)}, status=500)
+
+    return JsonResponse({"error": "Invalid request"}, status=400)

@@ -15,7 +15,7 @@ from .views import (
     ServiceDetailView,
     OrderDetailView,
     ViewCart,
-    RegisterAPIView,
+    RegisterAPIView, create_payment_intent,
 
 )
 from rest_framework_simplejwt.views import (
@@ -63,8 +63,6 @@ urlpatterns = [
     path('bookings/', BookingCreateView.as_view(), name='bookings'),
     path('bookings/status/', BookingStatusView.as_view(), name='booking-status'),
     path('booking/confirm/<int:pk>/', ConfirmBookingView.as_view(), name='booking-confirm'),
-
-
 
 
 ]

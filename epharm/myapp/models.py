@@ -149,3 +149,14 @@ class BookingReport(models.Model):
 
     class Meta:
         ordering = ['-uploaded_at']
+
+
+
+
+
+class Payment(models.Model):
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    stripe_payment_id = models.CharField(max_length=255)
+    created_at = models.DateTimeField(auto_now_add=True)
+    status = models.CharField(max_length=100)
+    payment_status = models.CharField(max_length=20, default='pending')
