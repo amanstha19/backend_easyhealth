@@ -4,7 +4,7 @@ from django.utils import timezone
 from django.db import models
 from django.contrib.auth.models import AbstractUser
 from rest_framework.exceptions import ValidationError
-
+from django.conf import settings
 
 # Custom User model
 class CustomUser(AbstractUser):
@@ -47,8 +47,6 @@ class Product(models.Model):
 
     def __str__(self):
         return self.generic_name if self.generic_name else self.name if self.name else "Unnamed Product"
-
-# Order model
 class Order(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -60,13 +58,16 @@ class Order(models.Model):
     total_price = models.DecimalField(max_digits=10, decimal_places=2)
     status = models.CharField(max_length=50, choices=STATUS_CHOICES, default='pending')
     address = models.TextField(null=False, default="Unknown Address")  # Add a default value
-
     prescription = models.FileField(upload_to='prescriptions/', null=True, blank=True)  # Ensure this exists
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Order {self.id}"
+        cart_items = self.cartitem_set.all()  # Get related cart items
+        cart_items_str = ", ".join([f"{item.quantity} x {item.product.name}" for item in cart_items])
+        return (f"Order {self.id} - {self.user.first_name} {self.user.last_name} ({self.user.phone}) "
+                f"Status: {self.status} - Address: {self.address} - Cart Items: {cart_items_str}")
+
 # CartItem model\
 
 class Cart(models.Model):
@@ -151,12 +152,16 @@ class BookingReport(models.Model):
         ordering = ['-uploaded_at']
 
 
-
-
-
 class Payment(models.Model):
-    amount = models.DecimalField(max_digits=10, decimal_places=2)
-    stripe_payment_id = models.CharField(max_length=255)
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)  # No default
+    order = models.ForeignKey('Order', on_delete=models.CASCADE)  # No default
+    stripe_payment_intent_id = models.CharField(max_length=255, null=True, blank=True)
+    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    status = models.CharField(max_length=50, choices=[('pending', 'Pending'), ('succeeded', 'Succeeded'), ('failed', 'Failed')], default='pending')
     created_at = models.DateTimeField(auto_now_add=True)
-    status = models.CharField(max_length=100)
-    payment_status = models.CharField(max_length=20, default='pending')
+
+    def __str__(self):
+        return f"Payment for Order {self.order.id} - {self.status}"
+
+    class Meta:
+        ordering = ['-created_at']

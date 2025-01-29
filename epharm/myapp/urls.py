@@ -1,5 +1,3 @@
-
-# myapp/urls.py (App-level URLs)
 from django.urls import path
 from . import views
 from .views import (
@@ -15,8 +13,8 @@ from .views import (
     ServiceDetailView,
     OrderDetailView,
     ViewCart,
-    RegisterAPIView, create_payment_intent,
-
+    RegisterAPIView,
+    # Make sure CreatePaymentIntent is imported
 )
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -63,6 +61,7 @@ urlpatterns = [
     path('bookings/', BookingCreateView.as_view(), name='bookings'),
     path('bookings/status/', BookingStatusView.as_view(), name='booking-status'),
     path('booking/confirm/<int:pk>/', ConfirmBookingView.as_view(), name='booking-confirm'),
+
 
 
 ]

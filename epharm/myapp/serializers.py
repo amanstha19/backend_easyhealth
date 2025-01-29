@@ -139,3 +139,5 @@ class BookingReportSerializer(serializers.ModelSerializer):
         model = BookingReport
         fields = ['id', 'booking', 'report_file', 'notes', 'uploaded_at']
         read_only_fields = ['uploaded_at']
+
+
