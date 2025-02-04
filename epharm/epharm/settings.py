@@ -9,31 +9,27 @@ https://docs.djangoproject.com/en/5.0/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.0/ref/settings/
 """
+
 import os
 from pathlib import Path
 from datetime import timedelta
-
-from django.conf.global_settings import MEDIA_URL
 from dotenv import load_dotenv
 
-load_dotenv()
-
-# Build paths inside the project like this: BASE_DIR / 'subdir'.
+# Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
 
-load_dotenv(os.path.join(BASE_DIR, '.env'))
-STRIPE_SECRET_KEY = os.getenv('sk_test_51QmXqQJ3ahnxPJePVWmYNpMzmA5Jt5cN8jFUuU1GzhanqeaQgTo92CRBx983jUzII9gMNVmRs48oYv53meBhNz2r00baMbHJtV')
-# Quick-start development settings - unsuitable for production
-# See https://docs.djangoproject.com/en/5.0/howto/deployment/checklist/
+# Load environment variables from .env
+dotenv_path = os.path.join(BASE_DIR, ".env")
+load_dotenv(dotenv_path)
 
-# SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-9a#lp$n8-))!sy=p+$r2q6ffsyd^8c^03_i3dgxv2siv2vb3a2'
-STRIPE_PUBLISHABLE_KEY = os.getenv('STRIPE_PUBLISHABLE_KEY')
-STRIPE_SECRET_KEY = os.getenv('STRIPE_SECRET_KEY')
-# SECURITY WARNING: don't run with debug turned on in production!
+# Security Keys
+SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")  # Fetching secret key
+ESEWA_SECRET_KEY = os.getenv("ESEWA_SECRET_KEY")  # Fetching eSewa key
+
+# Debug mode (Set to False in production)
 DEBUG = True
 
-ALLOWED_HOSTS = []
+ALLOWED_HOSTS = ["*"]  # Change to specific hosts in production
 
 
 # Application definition
@@ -242,3 +238,14 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 
 
+SITE_URL = 'http://localhost:8000'
+
+
+CORS_ALLOW_METHODS = [
+    'GET',
+    'POST',
+    'PUT',
+    'PATCH',
+    'DELETE',
+    'OPTIONS'
+]

@@ -3,7 +3,7 @@ from django.contrib.auth import get_user_model
 from django.contrib.auth.password_validation import validate_password
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
-from .models import Product, CustomUser, Cart, CartItem, Order,Booking
+from .models import Product, CustomUser, Cart, CartItem, Order, Booking
 from rest_framework import generics
 
 # User Serializer for creating and managing users (register)
@@ -141,3 +141,25 @@ class BookingReportSerializer(serializers.ModelSerializer):
         read_only_fields = ['uploaded_at']
 
 
+from rest_framework import serializers
+from .models import userPayment
+
+class UserPaymentSerializer(serializers.ModelSerializer):
+    user = serializers.StringRelatedField(read_only=True)
+    # Use a nested serializer for order details (read-only)
+    order = OrderSerializer(read_only=True)
+    # Display user using its __str__ method (e.g., username) or create a custom serializer if needed
+    user = serializers.StringRelatedField(read_only=True)
+
+    class Meta:
+        model = userPayment
+        fields = [
+            'amount',
+            'tax_amount',
+            'transaction_uuid',
+            'total_amount',
+            'transaction_code',
+            'status',
+            'order',
+            'user'
+        ]

@@ -1,7 +1,8 @@
 from django.contrib import admin
+from django.contrib.auth.admin import UserAdmin
 from django.urls import reverse
 from django.utils.html import format_html
-from .models import Product, CustomUser, Cart, CartItem, Order, Service, Booking, BookingReport,Payment
+from .models import Product, CustomUser, Cart, CartItem, Order, Service, Booking, BookingReport
 
 
 # Admin for Product model
@@ -16,6 +17,14 @@ admin.site.register(Product, ProductAdmin)
 class CustomUserAdmin(admin.ModelAdmin):
     list_display = ('username', 'email', 'first_name', 'last_name', 'city', 'country', 'phone')
     search_fields = ('username', 'email', 'first_name', 'last_name', 'city', 'country', 'phone')
+
+    # Add custom fields to the user creation/edit form
+    fieldsets = UserAdmin.fieldsets + (
+        ('Additional Info', {'fields': ('phone', 'city', 'country')}),
+    )
+    add_fieldsets = UserAdmin.add_fieldsets + (
+        ('Additional Info', {'fields': ('phone', 'city', 'country')}),
+    )
 
 admin.site.register(CustomUser, CustomUserAdmin)
 
@@ -92,20 +101,62 @@ class BookingReportAdmin(admin.ModelAdmin):
     search_fields = ('booking__name', 'booking__service__name')  # Search by booking name and service
     list_filter = ('uploaded_at',)  # Add filter by upload date
 
+from django.contrib import admin
+from .models import userPayment
 
+@admin.register(userPayment)
+class UserPaymentAdmin(admin.ModelAdmin):
+    list_display = (
+        'transaction_uuid',
+        'get_user_info',  # Displays user info
+        'get_order_details',  # Displays order details
+        'transaction_code',
+        'amount',
+        'tax_amount',
+        'total_amount',
+        'status',
+        'created_at'
+    )
+    search_fields = (
+        'transaction_uuid',
+        'transaction_code',
+        'user__username',  # Searching by username of the linked user
+        'user__email'  # Searching by email of the linked user
+    )
+    list_filter = ('status', 'created_at')
+    readonly_fields = ('created_at', 'updated_at')
 
-class PaymentAdmin(admin.ModelAdmin):
-    list_display = ('user', 'order', 'amount', 'status', 'stripe_payment_intent_id', 'created_at')
-    list_filter = ('status',)
-    search_fields = ('order__id', 'stripe_payment_intent_id')
-    list_editable = ('status',)  # You can edit the status directly from the list view
+    def get_user_info(self, obj):
+        if obj.user:
+            return f"{obj.user.username} ({obj.user.email})"  # Show the username and email if the user exists
+        return "No user assigned"  # If no user is linked to the payment
+    get_user_info.short_description = 'User'
 
-    # Optionally add a link to the order from the payment view
-    def view_order_link(self, obj):
-        from django.urls import reverse
-        return format_html('<a href="{}">View Order</a>', reverse('admin:myapp_order_change', args=[obj.order.id]))
+    def get_order_details(self, obj):
+        return obj.get_order_details()
+    get_order_details.short_description = 'Order Details'
 
-    view_order_link.short_description = 'View Order'
-
-
-admin.site.register(Payment, PaymentAdmin)
+    fieldsets = (
+        ('User Information', {
+            'fields': ('user',)  # Only show 'user' field in the admin form
+        }),
+        ('Transaction Details', {
+            'fields': (
+                'transaction_uuid',
+                'transaction_code',
+                'amount',
+                'tax_amount',
+                'total_amount',
+                'product_code',
+                'status'
+            )
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at'),
+            'classes': ('collapse',)  # Collapse this section by default
+        }),
+        ('Order Details', {
+            'fields': ('order',),  # Display order info
+            'classes': ('collapse',)
+        }),
+    )

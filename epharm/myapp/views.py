@@ -1,10 +1,10 @@
 from rest_framework.views import APIView
 from rest_framework import permissions
-from .serializers import ProductSerializer, UserSerializer, RegisterSerializer, OrderSerializer, \
-    CustomTokenObtainPairSerializer, ServiceSerializer
+from .serializers import ProductSerializer, UserSerializer, RegisterSerializer, OrderSerializer, CustomTokenObtainPairSerializer, ServiceSerializer
+from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
 
-from .models import Product, CustomUser, Cart, CartItem, Order, Booking, BookingReport
+from .models import Product, CustomUser, Cart, CartItem, Order, Booking, BookingReport, userPayment
 from django.shortcuts import get_object_or_404, redirect, render
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
@@ -516,3 +516,152 @@ def upload_report_view(request, pk):
 
 
 
+
+import hmac
+
+import hashlib
+import base64
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from django.conf import settings
+from .models import userPayment
+
+class ProcessPaymentView(APIView):
+    def post(self, request):
+        try:
+            amount = float(request.data.get('amount', 0))
+            tax_amount = float(request.data.get('tax_amount', 0))
+            transaction_uuid = request.data.get('transaction_uuid')
+
+            if not transaction_uuid:
+                return Response({"error": "Missing transaction_uuid"}, status=status.HTTP_400_BAD_REQUEST)
+
+            total_amount = amount + tax_amount
+
+            payment = userPayment.objects.create(
+                amount=amount,
+                tax_amount=tax_amount,
+                total_amount=total_amount,
+                transaction_uuid=transaction_uuid,
+                status="PENDING"
+            )
+
+            message = f"total_amount={total_amount},transaction_uuid={transaction_uuid},product_code=EPAYTEST"
+            secret_key = "8gBm/:&EnhH.1/q"
+            signature = base64.b64encode(
+                hmac.new(
+                    secret_key.encode(),
+                    message.encode(),
+                    hashlib.sha256
+                ).digest()
+            ).decode()
+
+            esewa_payment_data = {
+                "amount": str(amount),
+                "tax_amount": str(tax_amount),
+                "total_amount": str(total_amount),
+                "transaction_uuid": transaction_uuid,
+                "product_code": "EPAYTEST",
+                "product_service_charge": "0",  # Add this field
+                "product_delivery_charge": "0",  # Add this field
+                "success_url": f"{settings.SITE_URL}/payment/success/",
+                "failure_url": f"{settings.SITE_URL}/payment/failure/",
+                "signed_field_names": "total_amount,transaction_uuid,product_code",
+                "signature": signature
+            }
+
+            return Response(esewa_payment_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+class PaymentVerificationView(APIView):
+    def post(self, request):
+        try:
+            transaction_code = request.data.get('transaction_code')
+            status_code = request.data.get('status')
+            transaction_uuid = request.data.get('transaction_uuid')
+            esewa_user = request.data.get('esewa_user')  # new field from eSewa, if provided
+
+            payment = userPayment.objects.get(transaction_uuid=transaction_uuid)
+            payment.transaction_code = transaction_code
+            payment.status = status_code
+            if esewa_user:
+                payment.esewa_user = esewa_user
+            payment.save()
+
+            return Response({"message": "Payment verified"}, status=status.HTTP_200_OK)
+
+        except userPayment.DoesNotExist:
+            return Response({"error": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+
+
+
+logger = logging.getLogger(__name__)
+
+
+@method_decorator(csrf_exempt, name='dispatch')
+class PaymentSuccessView(View):
+    def get(self, request, *args, **kwargs):
+        try:
+            # Log incoming request
+            logger.info(f"Received eSewa callback with data: {request.GET}")
+
+            # Get the encoded data from URL
+            encoded_data = request.GET.get('data')
+            if not encoded_data:
+                logger.error("No payment data received")
+                return JsonResponse({'error': 'No payment data received'}, status=400)
+
+            # Decode the base64 data
+            try:
+                decoded_bytes = base64.b64decode(encoded_data)
+                payment_data = json.loads(decoded_bytes.decode('utf-8'))
+                logger.info(f"Decoded payment data: {payment_data}")
+            except Exception as e:
+                logger.error(f"Error decoding payment data: {str(e)}")
+                return JsonResponse({'error': 'Invalid payment data format'}, status=400)
+
+            # Extract payment details
+            transaction_code = payment_data.get('transaction_code')
+            status = payment_data.get('status')
+            total_amount = payment_data.get('total_amount')
+            transaction_uuid = payment_data.get('transaction_uuid')
+
+            try:
+                # Update payment record
+                payment = userPayment.objects.get(transaction_uuid=transaction_uuid)
+                payment.transaction_code = transaction_code
+                payment.status = status
+                payment.total_amount = total_amount
+                payment.save()
+                logger.info(f"Payment record updated for UUID: {transaction_uuid}")
+
+                # If payment is complete, update related order if exists
+                if status == 'COMPLETE' and payment.order:
+                    payment.order.status = 'PAID'
+                    payment.order.save()
+                    logger.info(f"Order status updated for payment: {transaction_uuid}")
+
+                # Determine frontend URL based on environment
+                if settings.DEBUG:
+                    frontend_base_url = 'http://localhost:5173'  # Vite's default port
+                else:
+                    frontend_base_url = 'https://your-production-domain.com'
+
+                redirect_url = f'{frontend_base_url}/payment/success?status={status}&transaction_uuid={transaction_uuid}&transaction_code={transaction_code}'
+                logger.info(f"Redirecting to: {redirect_url}")
+
+                return redirect(redirect_url)
+
+            except userPayment.DoesNotExist:
+                logger.error(f"Payment not found for UUID: {transaction_uuid}")
+                return JsonResponse({'error': 'Payment record not found'}, status=404)
+
+        except Exception as e:
+            logger.error(f"Error processing payment: {str(e)}")
+            return JsonResponse({'error': str(e)}, status=500)

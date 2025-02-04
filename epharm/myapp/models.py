@@ -151,17 +151,26 @@ class BookingReport(models.Model):
     class Meta:
         ordering = ['-uploaded_at']
 
-
-class Payment(models.Model):
-    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)  # No default
-    order = models.ForeignKey('Order', on_delete=models.CASCADE)  # No default
-    stripe_payment_intent_id = models.CharField(max_length=255, null=True, blank=True)
-    amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
-    status = models.CharField(max_length=50, choices=[('pending', 'Pending'), ('succeeded', 'Succeeded'), ('failed', 'Failed')], default='pending')
-    created_at = models.DateTimeField(auto_now_add=True)
+from django.db import models
+from django.utils import timezone
+class userPayment(models.Model):
+    user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='user_payments', null=True, blank=True)
+    order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True)
+    products = models.ManyToManyField(Product, blank=True)  # If direct product linkage is needed
+    amount = models.DecimalField(max_digits=10, decimal_places=2)
+    tax_amount = models.DecimalField(max_digits=10, decimal_places=2, default=0)
+    total_amount = models.DecimalField(max_digits=10, decimal_places=2)
+    transaction_uuid = models.CharField(max_length=100, unique=True)
+    transaction_code = models.CharField(max_length=100, null=True, blank=True)
+    status = models.CharField(max_length=20, default='PENDING')
+    product_code = models.CharField(max_length=50, default='EPAYTEST')
+    created_at = models.DateTimeField(default=timezone.now)
+    updated_at = models.DateTimeField(auto_now=True)
 
     def __str__(self):
-        return f"Payment for Order {self.order.id} - {self.status}"
+        return f"{self.transaction_uuid} - {self.status}"
 
-    class Meta:
-        ordering = ['-created_at']
+    def get_order_details(self):
+        if self.order:
+            return f"Order ID: {self.order.id}, Status: {self.order.status}, Address: {self.order.address}, Total: {self.order.total_price}"
+        return "No order details available"
