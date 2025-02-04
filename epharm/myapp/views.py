@@ -544,7 +544,9 @@ class ProcessPaymentView(APIView):
                 tax_amount=tax_amount,
                 total_amount=total_amount,
                 transaction_uuid=transaction_uuid,
-                status="PENDING"
+                status="PENDING",
+            user = request.user,  # Associate with current user
+            # Link to specific order
             )
 
             message = f"total_amount={total_amount},transaction_uuid={transaction_uuid},product_code=EPAYTEST"
@@ -557,7 +559,7 @@ class ProcessPaymentView(APIView):
                 ).digest()
             ).decode()
 
-            esewa_payment_data = {
+            user_payment_data = {
                 "amount": str(amount),
                 "tax_amount": str(tax_amount),
                 "total_amount": str(total_amount),
@@ -571,7 +573,7 @@ class ProcessPaymentView(APIView):
                 "signature": signature
             }
 
-            return Response(esewa_payment_data, status=status.HTTP_200_OK)
+            return Response(user_payment_data, status=status.HTTP_200_OK)
 
         except Exception as e:
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
@@ -582,13 +584,13 @@ class PaymentVerificationView(APIView):
             transaction_code = request.data.get('transaction_code')
             status_code = request.data.get('status')
             transaction_uuid = request.data.get('transaction_uuid')
-            esewa_user = request.data.get('esewa_user')  # new field from eSewa, if provided
+            user_user = request.data.get('user_user')  # new field from eSewa, if provided
 
             payment = userPayment.objects.get(transaction_uuid=transaction_uuid)
             payment.transaction_code = transaction_code
             payment.status = status_code
-            if esewa_user:
-                payment.esewa_user = esewa_user
+            if user_user:
+                payment.user_user = user_user
             payment.save()
 
             return Response({"message": "Payment verified"}, status=status.HTTP_200_OK)
