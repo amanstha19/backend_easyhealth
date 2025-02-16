@@ -707,3 +707,124 @@ class UserProfileView(APIView):
         except Exception as e:
             logger.error(f"Error fetching user profile: {str(e)}")
             return Response({"detail": "Error fetching profile data."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Booking, userPayment
+import hmac
+import hashlib
+import base64
+import logging
+import time
+
+logger = logging.getLogger(__name__)
+
+
+class BookingPaymentView(APIView):
+    def post(self, request):
+        try:
+            # Handle payment callback
+            if 'data' in request.data or 'status' in request.data:
+                transaction_uuid = request.data.get('transaction_uuid')
+                status_code = request.data.get('status', 'SUCCESS')
+                transaction_code = request.data.get('transaction_code')
+
+                try:
+                    payment = userPayment.objects.get(transaction_uuid=transaction_uuid)
+                    payment.transaction_code = transaction_code
+                    payment.status = status_code
+                    payment.save()
+
+                    # Update booking status if payment is successful
+                    if status_code == 'SUCCESS' and payment.booking:
+                        booking = payment.booking
+                        booking.status = 'confirmed'
+                        booking.save()
+
+                    logger.info(f"Booking payment callback processed successfully for transaction {transaction_uuid}")
+                    return Response({
+                        "message": "Payment successful",
+                        "transaction_uuid": transaction_uuid
+                    }, status=status.HTTP_200_OK)
+
+                except userPayment.DoesNotExist:
+                    logger.error(f"Payment not found for transaction {transaction_uuid}")
+                    return Response({"error": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            # Initialize new payment
+            booking_id = request.data.get('booking_id')
+            amount = float(request.data.get('amount', 0))
+            tax_amount = float(request.data.get('tax_amount', 0))
+            transaction_uuid = request.data.get('transaction_uuid')
+
+            if not transaction_uuid or not booking_id:
+                return Response({"error": "Missing transaction_uuid or booking_id"}, status=status.HTTP_400_BAD_REQUEST)
+
+            try:
+                booking = Booking.objects.get(id=booking_id)
+            except Booking.DoesNotExist:
+                return Response({"error": "Booking not found"}, status=status.HTTP_404_NOT_FOUND)
+
+            total_amount = amount + tax_amount
+
+            # Create payment record
+            payment = userPayment.objects.create(
+                amount=amount,
+                tax_amount=tax_amount,
+                total_amount=total_amount,
+                transaction_uuid=transaction_uuid,
+                status="PENDING",
+                user=request.user if request.user.is_authenticated else None,
+                booking=booking
+            )
+
+            # Generate eSewa payment signature
+            message = f"total_amount={total_amount},transaction_uuid={transaction_uuid},product_code=EPAYTEST"
+            secret_key = "8gBm/:&EnhH.1/q"  # eSewa test secret key
+            signature = base64.b64encode(
+                hmac.new(
+                    secret_key.encode(),
+                    message.encode(),
+                    hashlib.sha256
+                ).digest()
+            ).decode()
+
+            # Prepare eSewa payment data
+            payment_data = {
+                "amount": str(amount),
+                "tax_amount": str(tax_amount),
+                "total_amount": str(total_amount),
+                "transaction_uuid": transaction_uuid,
+                "product_code": "EPAYTEST",
+                "product_service_charge": "0",
+                "product_delivery_charge": "0",
+                "success_url": f"https://developer.esewa.com.np/success/",  # Update with your success URL
+                "failure_url": f"https://developer.esewa.com.np/failure/",  # Update with your failure URL
+                "signed_field_names": "total_amount,transaction_uuid,product_code",
+                "signature": signature
+            }
+
+            return Response(payment_data, status=status.HTTP_200_OK)
+
+        except Exception as e:
+            logger.error(f"Booking payment processing error: {str(e)}")
+            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+
+    def process_payment_callback(self, request):
+        try:
+            time.sleep(10)  # Add delay for payment processing
+            status = request.GET.get('status', 'FAILED')
+            transaction_data = request.GET.get('data', '')
+
+            payment_status_url = f"http://localhost:5173/booking-payment-success?status={status}&data={transaction_data}"
+
+            return JsonResponse({"redirect_url": payment_status_url})
+        except Exception as e:
+            logger.error(f"Error in process_payment_callback: {str(e)}")
+            return JsonResponse({"error": "Failed to process payment callback"}, status=status.HTTP_400_BAD_REQUEST)
+
+
+

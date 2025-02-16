@@ -13,7 +13,7 @@ from .views import (
     ServiceDetailView,
     OrderDetailView,
     ViewCart,
-    RegisterAPIView, ProductSearchAPIView,
+    RegisterAPIView, ProductSearchAPIView, BookingPaymentView,
 
 )
 from .views import ProcessPaymentView, PaymentSuccessView
@@ -70,6 +70,11 @@ urlpatterns = [
     path('payment-success/', PaymentSuccessView.as_view(), name='payment-success'),
 
     path('products/search/', ProductSearchAPIView.as_view(), name='product-search'),
+
+    path('booking-payment/', BookingPaymentView.as_view(), name='booking-payment'),
+
+
+
 
 
 

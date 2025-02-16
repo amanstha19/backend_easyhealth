@@ -111,6 +111,16 @@ class Booking(models.Model):
         ('completed', 'Completed'),
     )
 
+    payment_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('pending', 'Pending'),
+            ('paid', 'Paid'),
+            ('failed', 'Failed')
+        ],
+        default='pending'
+    )
+
     name = models.CharField(max_length=100)
     mobile_number = models.CharField(max_length=15)
     email = models.EmailField()
@@ -157,7 +167,7 @@ class BookingReport(models.Model):
 from django.db import models
 from django.utils import timezone
 class userPayment(models.Model):
-
+    booking = models.ForeignKey(Booking, on_delete=models.SET_NULL, null=True, blank=True)
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='user_payments', null=True, blank=True)
     order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True)
     products = models.ManyToManyField(Product, blank=True)  # If direct product linkage is needed
