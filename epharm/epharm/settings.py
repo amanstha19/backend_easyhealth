@@ -14,13 +14,28 @@ import os
 from pathlib import Path
 from datetime import timedelta
 from dotenv import load_dotenv
-
+FRONTEND_URL = os.getenv('FRONTEND_URL', 'http://localhost:5173')
 # Base directory
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Load environment variables from .env
 dotenv_path = os.path.join(BASE_DIR, ".env")
 load_dotenv(dotenv_path)
+
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'root': {
+        'handlers': ['console'],
+        'level': 'INFO',
+    },
+}
 
 # Security Keys
 SECRET_KEY = os.getenv("DJANGO_SECRET_KEY")  # Fetching secret key
@@ -239,6 +254,7 @@ STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 
 
 SITE_URL = 'http://localhost:8000'
+
 
 
 CORS_ALLOW_METHODS = [

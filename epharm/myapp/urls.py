@@ -13,10 +13,10 @@ from .views import (
     ServiceDetailView,
     OrderDetailView,
     ViewCart,
-    RegisterAPIView, PaymentSuccessView,
-    # Make sure CreatePaymentIntent is imported
+    RegisterAPIView, ProductSearchAPIView,
+
 )
-from .views import ProcessPaymentView, PaymentVerificationView
+from .views import ProcessPaymentView, PaymentSuccessView
 
 from rest_framework_simplejwt.views import (
     TokenObtainPairView,
@@ -64,7 +64,12 @@ urlpatterns = [
     path('bookings/status/', BookingStatusView.as_view(), name='booking-status'),
     path('booking/confirm/<int:pk>/', ConfirmBookingView.as_view(), name='booking-confirm'),
     path('process-payment/', ProcessPaymentView.as_view(), name='process-payment'),
-    path('verify-payment/', PaymentVerificationView.as_view(), name='verify-payment'),
+
+
+
+    path('payment-success/', PaymentSuccessView.as_view(), name='payment-success'),
+
+    path('products/search/', ProductSearchAPIView.as_view(), name='product-search'),
 
 
 

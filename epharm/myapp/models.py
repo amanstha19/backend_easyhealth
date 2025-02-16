@@ -47,6 +47,9 @@ class Product(models.Model):
 
     def __str__(self):
         return self.generic_name if self.generic_name else self.name if self.name else "Unnamed Product"
+
+
+
 class Order(models.Model):
     STATUS_CHOICES = [
         ('pending', 'Pending'),
@@ -154,6 +157,7 @@ class BookingReport(models.Model):
 from django.db import models
 from django.utils import timezone
 class userPayment(models.Model):
+
     user = models.ForeignKey(CustomUser, on_delete=models.CASCADE, related_name='user_payments', null=True, blank=True)
     order = models.ForeignKey(Order, on_delete=models.SET_NULL, null=True, blank=True)
     products = models.ManyToManyField(Product, blank=True)  # If direct product linkage is needed

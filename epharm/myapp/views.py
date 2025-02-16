@@ -3,7 +3,7 @@ from rest_framework import permissions
 from .serializers import ProductSerializer, UserSerializer, RegisterSerializer, OrderSerializer, CustomTokenObtainPairSerializer, ServiceSerializer
 from django.utils.decorators import method_decorator
 from django.views.decorators.csrf import csrf_exempt
-
+from rest_framework import status
 from .models import Product, CustomUser, Cart, CartItem, Order, Booking, BookingReport, userPayment
 from django.shortcuts import get_object_or_404, redirect, render
 from rest_framework_simplejwt.tokens import RefreshToken
@@ -513,23 +513,44 @@ def upload_report_view(request, pk):
     booking = get_object_or_404(Booking, pk=pk)
     # Add your logic for uploading a report
     return render(request, 'admin/upload_report.html', {'booking': booking})
-
-
-
-
 import hmac
-
+import json
 import hashlib
 import base64
+import logging
+import time
 from rest_framework.views import APIView
 from rest_framework.response import Response
 from rest_framework import status
 from django.conf import settings
+from django.http import JsonResponse
 from .models import userPayment
 
+logger = logging.getLogger(__name__)
 class ProcessPaymentView(APIView):
     def post(self, request):
         try:
+            if 'data' in request.data or 'status' in request.data:
+                transaction_uuid = request.data.get('transaction_uuid')
+                status_code = request.data.get('status', 'SUCCESS')  # Default to SUCCESS if data present
+                transaction_code = request.data.get('transaction_code')
+
+                try:
+                    payment = userPayment.objects.get(transaction_uuid=transaction_uuid)
+                    payment.transaction_code = transaction_code
+                    payment.status = status_code
+                    payment.save()
+
+                    logger.info(f"Payment callback processed successfully for transaction {transaction_uuid}")
+                    return Response({
+                        "message": "Payment successful",
+                        "transaction_uuid": transaction_uuid
+                    }, status=status.HTTP_200_OK)
+
+                except userPayment.DoesNotExist:
+                    logger.error(f"Payment not found for transaction {transaction_uuid}")
+                    return Response({"error": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
+
             amount = float(request.data.get('amount', 0))
             tax_amount = float(request.data.get('tax_amount', 0))
             transaction_uuid = request.data.get('transaction_uuid')
@@ -545,8 +566,7 @@ class ProcessPaymentView(APIView):
                 total_amount=total_amount,
                 transaction_uuid=transaction_uuid,
                 status="PENDING",
-            user = request.user,  # Associate with current user
-            # Link to specific order
+                user=request.user,
             )
 
             message = f"total_amount={total_amount},transaction_uuid={transaction_uuid},product_code=EPAYTEST"
@@ -565,10 +585,10 @@ class ProcessPaymentView(APIView):
                 "total_amount": str(total_amount),
                 "transaction_uuid": transaction_uuid,
                 "product_code": "EPAYTEST",
-                "product_service_charge": "0",  # Add this field
-                "product_delivery_charge": "0",  # Add this field
-                "success_url": f"{settings.SITE_URL}/payment/success/",
-                "failure_url": f"{settings.SITE_URL}/payment/failure/",
+                "product_service_charge": "0",
+                "product_delivery_charge": "0",
+                "success_url": f"https://developer.esewa.com.np/success/",  # eSewa success URL
+                "failure_url": f"https://developer.esewa.com.np/failure/",  # eSewa failure URL
                 "signed_field_names": "total_amount,transaction_uuid,product_code",
                 "signature": signature
             }
@@ -576,94 +596,77 @@ class ProcessPaymentView(APIView):
             return Response(user_payment_data, status=status.HTTP_200_OK)
 
         except Exception as e:
+            logger.error(f"Payment processing error: {str(e)}")
             return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-class PaymentVerificationView(APIView):
-    def post(self, request):
+    def process_payment_callback(self, request):
+        """Handle the callback and add a delay before redirecting"""
         try:
-            transaction_code = request.data.get('transaction_code')
-            status_code = request.data.get('status')
-            transaction_uuid = request.data.get('transaction_uuid')
-            user_user = request.data.get('user_user')  # new field from eSewa, if provided
+            # Introduce a 10-second delay
+            time.sleep(10)
 
-            payment = userPayment.objects.get(transaction_uuid=transaction_uuid)
-            payment.transaction_code = transaction_code
-            payment.status = status_code
-            if user_user:
-                payment.user_user = user_user
-            payment.save()
+            # Get the status and transaction data from the query params
+            status = request.GET.get('status', 'FAILED')
+            transaction_data = request.GET.get('data', '')
 
-            return Response({"message": "Payment verified"}, status=status.HTTP_200_OK)
+            # Construct the frontend URL with payment status
+            payment_status_url = f"http://localhost:5173/payment-success?status={status}&data={transaction_data}"
 
-        except userPayment.DoesNotExist:
-            return Response({"error": "Payment not found"}, status=status.HTTP_404_NOT_FOUND)
+            # Return the URL as a JSON response
+            return JsonResponse({"redirect_url": payment_status_url})
+
         except Exception as e:
-            return Response({"error": str(e)}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(f"Error in process_payment_callback: {str(e)}")
+            return JsonResponse({"error": "Failed to process payment callback"}, status=status.HTTP_400_BAD_REQUEST)
+
+class PaymentSuccessView(APIView):
+    def get(self, request):
+        return Response({"message": "Payment was successful!"}, status=status.HTTP_200_OK)
+
+class PaymentFailureView(APIView):
+    def get(self, request):
+        return Response({"message": "Payment failed. Please try again."}, status=status.HTTP_400_BAD_REQUEST)
+
+class test:
+    pass
 
 
 
+from .models import Product
 
-logger = logging.getLogger(__name__)
+from django.db.models import Q
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Product
 
 
-@method_decorator(csrf_exempt, name='dispatch')
-class PaymentSuccessView(View):
+class ProductSearchAPIView(APIView):
     def get(self, request, *args, **kwargs):
-        try:
-            # Log incoming request
-            logger.info(f"Received eSewa callback with data: {request.GET}")
+        search_query = request.GET.get('search', '').strip()
+        category = request.GET.get('category', '').strip()
 
-            # Get the encoded data from URL
-            encoded_data = request.GET.get('data')
-            if not encoded_data:
-                logger.error("No payment data received")
-                return JsonResponse({'error': 'No payment data received'}, status=400)
+        # Basic query for filtering by name and description (case-insensitive)
+        filters = Q(name__icontains=search_query) | Q(description__icontains=search_query)
 
-            # Decode the base64 data
-            try:
-                decoded_bytes = base64.b64decode(encoded_data)
-                payment_data = json.loads(decoded_bytes.decode('utf-8'))
-                logger.info(f"Decoded payment data: {payment_data}")
-            except Exception as e:
-                logger.error(f"Error decoding payment data: {str(e)}")
-                return JsonResponse({'error': 'Invalid payment data format'}, status=400)
+        # Apply category filter if provided
+        if category:
+            filters &= Q(category=category)
 
-            # Extract payment details
-            transaction_code = payment_data.get('transaction_code')
-            status = payment_data.get('status')
-            total_amount = payment_data.get('total_amount')
-            transaction_uuid = payment_data.get('transaction_uuid')
+        # Get products with applied filters
+        products = Product.objects.filter(filters)
 
-            try:
-                # Update payment record
-                payment = userPayment.objects.get(transaction_uuid=transaction_uuid)
-                payment.transaction_code = transaction_code
-                payment.status = status
-                payment.total_amount = total_amount
-                payment.save()
-                logger.info(f"Payment record updated for UUID: {transaction_uuid}")
+        # Serialize and return the products
+        product_data = [{
+            "id": product.id,
+            "name": product.name,
+            "generic_name": product.generic_name,
+            "category": product.category,
+            "description": product.description,
+            "price": product.price,
+            "stock": product.stock,
+            "prescription_required": product.prescription_required,
+            "image": product.image.url if product.image else None,
+        } for product in products]
 
-                # If payment is complete, update related order if exists
-                if status == 'COMPLETE' and payment.order:
-                    payment.order.status = 'PAID'
-                    payment.order.save()
-                    logger.info(f"Order status updated for payment: {transaction_uuid}")
-
-                # Determine frontend URL based on environment
-                if settings.DEBUG:
-                    frontend_base_url = 'http://localhost:5173'  # Vite's default port
-                else:
-                    frontend_base_url = 'https://your-production-domain.com'
-
-                redirect_url = f'{frontend_base_url}/payment/success?status={status}&transaction_uuid={transaction_uuid}&transaction_code={transaction_code}'
-                logger.info(f"Redirecting to: {redirect_url}")
-
-                return redirect(redirect_url)
-
-            except userPayment.DoesNotExist:
-                logger.error(f"Payment not found for UUID: {transaction_uuid}")
-                return JsonResponse({'error': 'Payment record not found'}, status=404)
-
-        except Exception as e:
-            logger.error(f"Error processing payment: {str(e)}")
-            return JsonResponse({'error': str(e)}, status=500)
+        return Response(product_data, status=status.HTTP_200_OK)

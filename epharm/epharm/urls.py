@@ -9,7 +9,7 @@ urlpatterns = [
     path('admin/', admin.site.urls),
     path('api/', include('myapp.urls')),
 
-    path('payment/success/', PaymentSuccessView.as_view(), name='payment-success'),
+
 
 
 
