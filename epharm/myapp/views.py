@@ -1,29 +1,48 @@
-from rest_framework.views import APIView
+
 from rest_framework import permissions
-from .serializers import ProductSerializer, UserSerializer, RegisterSerializer, OrderSerializer, CustomTokenObtainPairSerializer, ServiceSerializer
-from django.utils.decorators import method_decorator
-from django.views.decorators.csrf import csrf_exempt
-from rest_framework import status
-from .models import Product, CustomUser, Cart, CartItem, Order, Booking, BookingReport, userPayment
-from django.shortcuts import get_object_or_404, redirect, render
+from .serializers import ProductSerializer, RegisterSerializer, OrderSerializer, CustomTokenObtainPairSerializer
+
+from .models import  CustomUser, Cart, CartItem, Order
+from django.shortcuts import redirect, render
 from rest_framework_simplejwt.tokens import RefreshToken
 from rest_framework_simplejwt.authentication import JWTAuthentication
-from rest_framework import generics, status
 from rest_framework_simplejwt.views import TokenObtainPairView
 from rest_framework.permissions import IsAuthenticated
-from rest_framework.response import Response
+
 from rest_framework.decorators import api_view, permission_classes
-import json
+
 from django.views.decorators.csrf import csrf_exempt
-from django.http import JsonResponse
+
 from django.db import transaction
+
+
+import json
+
+from django.http import JsonResponse
+
+from rest_framework import generics, views
+
+from rest_framework.permissions import AllowAny
+from django.shortcuts import get_object_or_404
+
+from .models import Service
+from .serializers import ServiceSerializer, BookingSerializer, BookingReportSerializer
+from django.db.models import Q
+
+
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from .models import Booking, userPayment,Product
+import hmac
+import hashlib
+import base64
 import logging
-from rest_framework import viewsets
-from django.http import HttpResponse
-from django.views import View
-from django.core.cache import cache
-# Logging setup
+import time
+
 logger = logging.getLogger(__name__)
+
+
 
 @api_view(['GET'])
 def getRoutes(request):
@@ -63,7 +82,10 @@ class RegisterAPIView(generics.CreateAPIView):
                 "username": user.username,
                 "email": user.email,
                 "first_name": user.first_name,
-                "last_name": user.last_name
+                "last_name": user.last_name,
+                "city": user.city,
+                "country": user.country,
+                "phone": user.phone
             },
             "refresh": str(refresh),
             "access": str(access_token),
@@ -327,7 +349,16 @@ class PlaceOrderView(APIView):
             with transaction.atomic():
                 for item in cart_items:
                     product = get_object_or_404(Product, id=item['id'])
+
+                    # Check if there is enough stock
+                    if product.stock < item['quantity']:
+                        return Response({"detail": f"Not enough stock for {product.name}."},
+                                        status=status.HTTP_400_BAD_REQUEST)
+
                     total_price += product.price * item['quantity']
+                    # Decrease stock
+                    product.stock -= item['quantity']
+                    product.save()
 
                 order = Order.objects.create(user=request.user, total_price=total_price, address=address)
 
@@ -382,15 +413,7 @@ def update_order_status(request, order_id):
     return Response({"message": "Order status updated successfully.", "order_id": order.id}, status=status.HTTP_200_OK)
 
  # Assuming this is the correct admin URL for bookings
-# views.py
-from rest_framework import generics, views, status
-from rest_framework.response import Response
-from rest_framework.permissions import AllowAny
-from django.shortcuts import get_object_or_404
-from django.http import HttpResponse
-from django.utils import timezone
-from .models import Service, Booking, BookingReport
-from .serializers import ServiceSerializer, BookingSerializer, BookingReportSerializer
+
 
 
 class BookingCreateView(views.APIView):
@@ -503,20 +526,9 @@ def upload_report_view(request, pk):
     booking = get_object_or_404(Booking, pk=pk)
     # Add your logic for uploading a report
     return render(request, 'admin/upload_report.html', {'booking': booking})
-import hmac
-import json
-import hashlib
-import base64
-import logging
-import time
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from django.conf import settings
-from django.http import JsonResponse
-from .models import userPayment
 
-logger = logging.getLogger(__name__)
+
+
 class ProcessPaymentView(APIView):
     def post(self, request):
         try:
@@ -624,11 +636,6 @@ class test:
 
 from .models import Product
 
-from django.db.models import Q
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from .models import Product
 
 
 class ProductSearchAPIView(APIView):
@@ -709,18 +716,6 @@ class UserProfileView(APIView):
             return Response({"detail": "Error fetching profile data."}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
 
-
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from .models import Booking, userPayment
-import hmac
-import hashlib
-import base64
-import logging
-import time
-
-logger = logging.getLogger(__name__)
 
 
 class BookingPaymentView(APIView):
