@@ -339,6 +339,7 @@ class PlaceOrderView(APIView):
             cart_items_data = request.data.get('cart_items')
             address = request.data.get('address')
             prescription = request.data.get('prescription', None)
+            payment_method = request.data.get('payment_method')
 
             if not cart_items_data or not address:
                 return Response({"detail": "Missing cart items or address."}, status=status.HTTP_400_BAD_REQUEST)
@@ -347,34 +348,48 @@ class PlaceOrderView(APIView):
             total_price = 0
 
             with transaction.atomic():
+                # Create the order first
+                order = Order.objects.create(user=request.user, total_price=0, address=address)
+
                 for item in cart_items:
                     product = get_object_or_404(Product, id=item['id'])
 
-                    # Check if there is enough stock
+                    # Check stock availability
                     if product.stock < item['quantity']:
                         return Response({"detail": f"Not enough stock for {product.name}."},
                                         status=status.HTTP_400_BAD_REQUEST)
 
                     total_price += product.price * item['quantity']
-                    # Decrease stock
+
+                    # Reduce stock **before** payment
                     product.stock -= item['quantity']
                     product.save()
 
-                order = Order.objects.create(user=request.user, total_price=total_price, address=address)
-
-                for item in cart_items:
-                    product = get_object_or_404(Product, id=item['id'])
+                    # Link cart items to the order
                     CartItem.objects.create(
                         product=product,
                         quantity=item['quantity'],
                         order=order
                     )
 
+                # Save the final total price
+                order.total_price = total_price
+                order.save()
+
+                # Handle prescription upload
                 if prescription:
                     prescription_file = request.FILES.get('prescription')
                     if prescription_file:
                         order.prescription = prescription_file
                         order.save()
+
+                # Check payment method
+                if payment_method == "online":
+                    return Response({
+                        "order_id": order.id,
+                        "message": "Proceed to eSewa payment",
+                        "total_price": total_price
+                    }, status=status.HTTP_200_OK)
 
                 return Response({"order_id": order.id}, status=status.HTTP_201_CREATED)
 
@@ -383,7 +398,6 @@ class PlaceOrderView(APIView):
         except Exception as e:
             logger.error(f"Error placing order: {str(e)}")
             return Response({"detail": str(e)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
-
 
 class OrderDetailView(APIView):
     permission_classes = [IsAuthenticated]
@@ -395,6 +409,7 @@ class OrderDetailView(APIView):
             return Response(serializer.data)
         except Order.DoesNotExist:
             return Response({"detail": "Order not found."}, status=status.HTTP_404_NOT_FOUND)
+
 @api_view(['PATCH'])
 def update_order_status(request, order_id):
     try:
