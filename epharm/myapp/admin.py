@@ -66,7 +66,7 @@ class CartItemInline(admin.TabularInline):
 
     def has_add_permission(self, request, obj=None):
         return False
-
+# Order Admin
 @admin.register(Order)
 class OrderAdmin(admin.ModelAdmin):
     list_display = ('id', 'user', 'total_price', 'status', 'created_at', 'updated_at', 'view_items')
@@ -75,12 +75,13 @@ class OrderAdmin(admin.ModelAdmin):
     readonly_fields = ('created_at', 'updated_at')
     inlines = [CartItemInline]
 
+    # Make the status editable
+    list_editable = ('status',)
+
     def view_items(self, obj):
         items = CartItem.objects.filter(order=obj)
         return format_html("<br>".join([f"{item.quantity}x {item.product.name}" for item in items]))
     view_items.short_description = "Order Items"
-
-admin.site.register(Service, admin.ModelAdmin)
 
 @admin.register(Booking)
 class BookingAdmin(admin.ModelAdmin):
@@ -95,12 +96,21 @@ class BookingReportAdmin(admin.ModelAdmin):
     search_fields = ('booking__name', 'booking__service__name')
     list_filter = ('uploaded_at',)
 
+
+
+
+from django.contrib import admin
+from django.utils.html import format_html
+from .models import userPayment, Order
+
+# User Payment Admin
 @admin.register(userPayment)
 class UserPaymentAdmin(admin.ModelAdmin):
     list_display = ('transaction_uuid', 'get_user_info', 'get_order_details', 'transaction_code', 'amount', 'tax_amount', 'total_amount', 'status', 'created_at')
     search_fields = ('transaction_uuid', 'transaction_code', 'user__username', 'user__email')
     list_filter = ('status', 'created_at')
     readonly_fields = ('created_at', 'updated_at')
+    list_editable = ('status',)  # Allows editing the 'status' directly in the admin interface
 
     def get_user_info(self, obj):
         if obj.user:
@@ -109,5 +119,17 @@ class UserPaymentAdmin(admin.ModelAdmin):
     get_user_info.short_description = 'User'
 
     def get_order_details(self, obj):
-        return obj.get_order_details()
+        return obj.get_order_details()  # This calls the get_order_details method in the model
     get_order_details.short_description = 'Order Details'
+
+    def save_model(self, request, obj, form, change):
+        """Override save_model to add custom actions after payment status change."""
+        if obj.status == 'SUCCESS':
+            try:
+                order = Order.objects.get(transaction_uuid=obj.transaction_uuid)
+                order.payment_status = 'paid'
+                order.save()
+                messages.add_message(request, messages.INFO, f'Payment for Order {order.id} marked as paid.')
+            except Order.DoesNotExist:
+                messages.add_message(request, messages.ERROR, f'Order not found for transaction {obj.transaction_uuid}')
+        super().save_model(request, obj, form, change)

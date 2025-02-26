@@ -144,12 +144,12 @@ class BookingReportSerializer(serializers.ModelSerializer):
 from rest_framework import serializers
 from .models import userPayment
 
+
+
+
 class UserPaymentSerializer(serializers.ModelSerializer):
-    user = serializers.StringRelatedField(read_only=True)
-    # Use a nested serializer for order details (read-only)
-    order = OrderSerializer(read_only=True)
-    # Display user using its __str__ method (e.g., username) or create a custom serializer if needed
-    user = serializers.StringRelatedField(read_only=True)
+    user = serializers.StringRelatedField(read_only=True)  # Display user info (string representation)
+    order = OrderSerializer(read_only=True)  # Nested OrderSerializer for detailed order info
 
     class Meta:
         model = userPayment
@@ -160,6 +160,7 @@ class UserPaymentSerializer(serializers.ModelSerializer):
             'total_amount',
             'transaction_code',
             'status',
-            'order',
-            'user'
+            'order',  # This will include all order details
+            'user',
         ]
+
